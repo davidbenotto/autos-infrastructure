@@ -1,0 +1,15 @@
+# GIT
+.git
+.gitignore
+
+# DEPENDENCIES
+node_modules
+npm-debug.log
+
+# ENVIRONMENT
+.env
+
+# MISC
+.DS_Store
+coverage
+dist

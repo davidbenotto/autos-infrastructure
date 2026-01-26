@@ -1,79 +1,36 @@
-import { useState, useEffect } from "react";
-import api from "./services/api";
+import { useState } from "react";
 import CredentialsModal from "./components/CredentialsModal";
 import ResourceSelector from "./components/ResourceSelector";
 import DeploymentList from "./components/DeploymentList";
 import DeployModal from "./components/DeployModal";
 import HistoryView from "./components/HistoryView";
+import { DeploymentProvider, useDeployment } from "./context/DeploymentContext";
 
-function App() {
-  const [provider, setProvider] = useState("aws");
-  const [currentView, setCurrentView] = useState("dashboard"); // 'dashboard' | 'history'
-  const [credentialStatus, setCredentialStatus] = useState({
-    aws: {},
-    azure: {},
-  });
+function MainContent() {
+  const {
+    provider,
+    setProvider,
+    currentView,
+    setCurrentView,
+    credentialStatus,
+    resources,
+    deployments,
+    loading,
+    initialLoading,
+    alert,
+    showAlert,
+    actions,
+  } = useDeployment();
+
   const [showCredentialsModal, setShowCredentialsModal] = useState(false);
   const [showDeployModal, setShowDeployModal] = useState(false);
   const [selectedResource, setSelectedResource] = useState(null);
-  const [deployments, setDeployments] = useState([]);
-  const [resources, setResources] = useState({ aws: [], azure: [] });
-  const [loading, setLoading] = useState(false);
-  const [initialLoading, setInitialLoading] = useState(true);
-  const [alert, setAlert] = useState(null);
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
-    try {
-      const [status, resourceTypes, deploymentsData] = await Promise.all([
-        api.getCredentialStatus(),
-        api.getResourceTypes(),
-        api.getDeployments(),
-      ]);
-      setCredentialStatus(status);
-      setResources(resourceTypes);
-      setDeployments(deploymentsData.deployments || []);
-    } catch (error) {
-      console.error("Failed to load data:", error);
-    } finally {
-      setInitialLoading(false);
-    }
-  };
-
-  const showAlert = (type, message) => {
-    setAlert({ type, message });
-    setTimeout(() => setAlert(null), 5000);
-  };
-
-  const handleCredentialsSave = async (credentials) => {
-    setLoading(true);
-    try {
-      const result =
-        provider === "aws"
-          ? await api.configureAWS(credentials)
-          : await api.configureAzure(credentials);
-
-      if (result.success) {
-        showAlert(
-          "success",
-          `${provider.toUpperCase()} connected successfully!`,
-        );
-        setShowCredentialsModal(false);
-        loadData();
-      } else {
-        showAlert("error", result.error || "Failed to configure credentials");
-      }
-    } catch (error) {
-      showAlert("error", error.message);
-    }
-    setLoading(false);
-  };
+  const isConnected = credentialStatus[provider]?.configured;
+  const isPreconfigured = credentialStatus[provider]?.preconfigured;
 
   const handleResourceSelect = (resource) => {
-    if (!credentialStatus[provider]?.configured) {
+    if (!isConnected) {
       showAlert("warning", `Please connect ${provider.toUpperCase()} first`);
       setShowCredentialsModal(true);
       return;
@@ -82,85 +39,47 @@ function App() {
     setShowDeployModal(true);
   };
 
-  const handleDeploy = async (options) => {
-    setLoading(true);
+  const onDeploySubmit = async (options) => {
     // Clear previous errors
     setSelectedResource({ ...selectedResource, error: null });
 
-    console.log("🚀 Starting deployment:", {
-      provider,
-      resourceType: selectedResource.id,
-      options,
-    });
-    try {
-      const result = await api.deploy(provider, selectedResource.id, options);
-      console.log("📦 Deployment result:", result);
+    const response = await actions.deploy(selectedResource, options);
 
-      if (result.success) {
-        // Generate custom success message
-        const resourceName = selectedResource.name; // e.g., "S3 Bucket", "Virtual Machine"
-        let successMessage = `The ${resourceName} has been deployed successfully! 🚀`;
+    if (response.success) {
+      const result = response.result;
+      const resourceName = selectedResource.name;
+      let successMessage = `The ${resourceName} has been deployed successfully! 🚀`;
 
-        // Handle Credential Download
-        if (result.credentials) {
-          const blob = new Blob([result.credentials.content], {
-            type: "text/plain",
-          });
-          const url = window.URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = result.credentials.filename;
-          a.click();
-          window.URL.revokeObjectURL(url);
-          successMessage += ` Credentials downloaded to ${result.credentials.filename}`;
-        }
-
-        showAlert("success", successMessage);
-        setShowDeployModal(false);
-        setSelectedResource(null);
-        loadData();
-      } else {
-        const errorMsg =
-          result.error || "Deployment failed - no error details provided";
-        console.error("❌ Deployment failed:", errorMsg);
-        // Show error IN the modal for better visibility
-        setSelectedResource({ ...selectedResource, error: errorMsg });
+      // Handle Credential Download
+      if (result.credentials) {
+        const blob = new Blob([result.credentials.content], {
+          type: "text/plain",
+        });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = result.credentials.filename;
+        a.click();
+        window.URL.revokeObjectURL(url);
+        successMessage += ` Credentials downloaded to ${result.credentials.filename}`;
       }
-    } catch (error) {
-      console.error("❌ Deployment exception:", error);
-      setSelectedResource({
-        ...selectedResource,
-        error: error.message || "Unexpected error occurred",
-      });
+
+      showAlert("success", successMessage);
+      setShowDeployModal(false);
+      setSelectedResource(null);
+    } else {
+      const errorMsg =
+        response.error || "Deployment failed - no error details provided";
+      setSelectedResource({ ...selectedResource, error: errorMsg });
     }
-    setLoading(false);
   };
 
-  const handleDestroy = async (deploymentId) => {
-    if (!confirm("Are you sure you want to destroy this resource?")) return;
-
-    setLoading(true);
-    try {
-      const result = await api.destroyDeployment(deploymentId);
-      if (result.success) {
-        showAlert("success", "Resource destroyed");
-        loadData();
-      } else {
-        showAlert("error", result.error);
-      }
-    } catch (error) {
-      showAlert("error", error.message);
+  const onCredentialsSubmit = async (creds) => {
+    const success = await actions.saveCredentials(creds);
+    if (success) {
+      setShowCredentialsModal(false);
     }
-    setLoading(false);
   };
-
-  const handleDisconnect = async () => {
-    await api.clearCredentials(provider);
-    loadData();
-  };
-
-  const isConnected = credentialStatus[provider]?.configured;
-  const isPreconfigured = credentialStatus[provider]?.preconfigured;
 
   // Group resources by category
   const groupedResources = (resources[provider] || []).reduce(
@@ -240,7 +159,7 @@ function App() {
                   {!isPreconfigured && (
                     <button
                       className="btn btn-secondary"
-                      onClick={handleDisconnect}
+                      onClick={actions.disconnect}
                     >
                       Disconnect
                     </button>
@@ -348,14 +267,14 @@ function App() {
                   d.provider === provider &&
                   ["active", "failed"].includes(d.status),
               )}
-              onDestroy={handleDestroy}
+              onDestroy={actions.destroy}
               loading={loading}
             />
           </>
         ) : (
           <HistoryView
             deployments={deployments}
-            onDestroy={handleDestroy}
+            onDestroy={actions.destroy}
             loading={loading}
           />
         )}
@@ -365,7 +284,7 @@ function App() {
         <CredentialsModal
           provider={provider}
           onClose={() => setShowCredentialsModal(false)}
-          onSave={handleCredentialsSave}
+          onSave={onCredentialsSubmit}
           loading={loading}
         />
       )}
@@ -378,11 +297,19 @@ function App() {
             setShowDeployModal(false);
             setSelectedResource(null);
           }}
-          onDeploy={handleDeploy}
+          onDeploy={onDeploySubmit}
           loading={loading}
         />
       )}
     </div>
+  );
+}
+
+function App() {
+  return (
+    <DeploymentProvider>
+      <MainContent />
+    </DeploymentProvider>
   );
 }
 

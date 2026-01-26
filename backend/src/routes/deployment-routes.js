@@ -3,6 +3,7 @@ import { decryptCredentials } from "../services/encryption-service.js";
 import { AWSProvider } from "../providers/aws-provider.js";
 import { AzureProvider } from "../providers/azure-provider.js";
 import { db } from "../services/database-service.js";
+import logger from "../utils/logger.js";
 
 const router = express.Router();
 
@@ -17,20 +18,41 @@ router.get("/resources", (req, res) => {
   });
 });
 
+import {
+  deploymentRequestSchema,
+  getValidationSchema,
+} from "../schemas/deployment-schemas.js";
+
 /**
  * POST /api/deployments/deploy
  * Deploy a resource
  */
 router.post("/deploy", async (req, res, next) => {
   try {
-    const { provider, resourceType, options } = req.body;
+    // 1. Validate Basic Request Structure
+    const validationResult = deploymentRequestSchema.safeParse(req.body);
 
-    if (!provider || !resourceType) {
+    if (!validationResult.success) {
       return res.status(400).json({
-        error: "Missing required fields",
-        required: ["provider", "resourceType"],
+        error: "Invalid request format",
+        details: validationResult.error.issues,
       });
     }
+
+    const { provider, resourceType, options } = validationResult.data;
+
+    // 2. Validate Resource Specific Options
+    const resourceSchema = getValidationSchema(resourceType);
+    const optionsValidation = resourceSchema.safeParse(options);
+
+    if (!optionsValidation.success) {
+      return res.status(400).json({
+        error: "Invalid deployment options",
+        details: optionsValidation.error.issues,
+      });
+    }
+
+    const validOptions = optionsValidation.data;
 
     const credentialKey = `${provider}_credentials`;
     if (!req.session[credentialKey]) {
@@ -45,16 +67,16 @@ router.post("/deploy", async (req, res, next) => {
     if (provider === "aws") {
       const awsProvider = new AWSProvider(credentials);
       const deployMethods = {
-        ec2: () => awsProvider.deployEC2(options),
-        s3: () => awsProvider.deployS3(options),
-        vpc: () => awsProvider.deployVPC(options),
-        rds: () => awsProvider.deployRDS(options),
-        lambda: () => awsProvider.deployLambda(options),
-        ecs: () => awsProvider.deployECS(options),
-        dynamodb: () => awsProvider.deployDynamoDB(options),
-        sns: () => awsProvider.deploySNS(options),
-        sqs: () => awsProvider.deploySQS(options),
-        cloudfront: () => awsProvider.deployCloudFront(options),
+        ec2: () => awsProvider.deployEC2(validOptions),
+        s3: () => awsProvider.deployS3(validOptions),
+        vpc: () => awsProvider.deployVPC(validOptions),
+        rds: () => awsProvider.deployRDS(validOptions),
+        lambda: () => awsProvider.deployLambda(validOptions),
+        ecs: () => awsProvider.deployECS(validOptions),
+        dynamodb: () => awsProvider.deployDynamoDB(validOptions),
+        sns: () => awsProvider.deploySNS(validOptions),
+        sqs: () => awsProvider.deploySQS(validOptions),
+        cloudfront: () => awsProvider.deployCloudFront(validOptions),
       };
 
       if (!deployMethods[resourceType]) {
@@ -65,29 +87,22 @@ router.post("/deploy", async (req, res, next) => {
       result = await deployMethods[resourceType]();
     } else if (provider === "azure") {
       // Debug logging for Azure credentials
-      console.log("🔵 Azure deployment requested:", {
+      logger.info("🔵 Azure deployment requested", {
         resourceType,
-        options,
-        credentials: {
-          tenantId: credentials.tenantId?.slice(0, 8) + "...",
-          clientId: credentials.clientId?.slice(0, 8) + "...",
-          subscriptionId: credentials.subscriptionId?.slice(0, 8) + "...",
-          resourceGroup: credentials.resourceGroup,
-          location: credentials.location,
-        },
+        deploymentOptions: validOptions,
       });
       const azureProvider = new AzureProvider(credentials);
       const deployMethods = {
-        vm: () => azureProvider.deployVM(options),
-        storage: () => azureProvider.deployStorage(options),
-        vnet: () => azureProvider.deployVNet(options),
-        sql: () => azureProvider.deploySQL(options),
-        functions: () => azureProvider.deployFunctions(options),
-        container: () => azureProvider.deployContainerInstance(options),
-        cosmosdb: () => azureProvider.deployCosmosDB(options),
-        servicebus: () => azureProvider.deployServiceBus(options),
-        cdn: () => azureProvider.deployCDN(options),
-        appservice: () => azureProvider.deployAppService(options),
+        vm: () => azureProvider.deployVM(validOptions),
+        storage: () => azureProvider.deployStorage(validOptions),
+        vnet: () => azureProvider.deployVNet(validOptions),
+        sql: () => azureProvider.deploySQL(validOptions),
+        functions: () => azureProvider.deployFunctions(validOptions),
+        container: () => azureProvider.deployContainerInstance(validOptions),
+        cosmosdb: () => azureProvider.deployCosmosDB(validOptions),
+        servicebus: () => azureProvider.deployServiceBus(validOptions),
+        cdn: () => azureProvider.deployCDN(validOptions),
+        appservice: () => azureProvider.deployAppService(validOptions),
       };
 
       if (!deployMethods[resourceType]) {
@@ -96,18 +111,14 @@ router.post("/deploy", async (req, res, next) => {
           .json({ error: `Unknown resource type: ${resourceType}` });
       }
 
-      console.log(`🔵 Starting Azure ${resourceType} deployment...`);
+      logger.info(`🔵 Starting Azure ${resourceType} deployment...`);
       result = await deployMethods[resourceType]();
-      console.log(
-        `🔵 Azure ${resourceType} deployment result:`,
-        JSON.stringify(result, null, 2),
-      );
+      logger.info(`🔵 Azure ${resourceType} deployment result`, { result });
 
       if (!result.success) {
-        console.error(
-          `❌ Azure ${resourceType} deployment failed:`,
-          result.error,
-        );
+        logger.error(`❌ Azure ${resourceType} deployment failed`, {
+          error: result.error,
+        });
       }
     } else {
       return res.status(400).json({ error: "Invalid provider" });
@@ -120,13 +131,13 @@ router.post("/deploy", async (req, res, next) => {
         provider,
         resourceType,
         resourceId: result.resourceId,
-        resourceName: options?.name || result.resourceId,
+        resourceName: validOptions?.name || result.resourceId,
         status: result.success ? "active" : "failed",
-        options: options || {},
+        options: validOptions || {},
         details: result.details || {},
       });
     } catch (dbError) {
-      console.error("Database error:", dbError);
+      logger.error("Database error:", dbError);
     }
 
     res.json(result);
@@ -197,7 +208,7 @@ router.delete("/:id", async (req, res, next) => {
           );
         }
       } catch (resourceError) {
-        console.warn(
+        logger.warn(
           `Failed to destroy resource ${deployment.resource_id}: ${resourceError.message}`,
         );
         // If it was already failed, we might still want to mark it as destroyed in DB

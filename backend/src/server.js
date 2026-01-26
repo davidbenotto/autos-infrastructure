@@ -9,6 +9,7 @@ import deploymentRoutes from "./routes/deployment-routes.js";
 import credentialRoutes from "./routes/credential-routes.js";
 import { encryptCredentials } from "./services/encryption-service.js";
 import { db } from "./services/database-service.js";
+import logger from "./utils/logger.js";
 
 dotenv.config();
 
@@ -22,9 +23,9 @@ let sessionStore;
 try {
   redisClient = new Redis(process.env.REDIS_URL || "redis://localhost:6379");
   sessionStore = new RedisStore({ client: redisClient });
-  console.log("📦 Connected to Redis");
+  logger.info("📦 Connected to Redis");
 } catch (error) {
-  console.log("⚠️ Redis not available, using memory sessions");
+  logger.warn("⚠️ Redis not available, using memory sessions");
   sessionStore = undefined;
 }
 
@@ -39,6 +40,12 @@ app.use(
 
 // Body parsing
 app.use(express.json());
+
+// Request logging middleware
+app.use((req, res, next) => {
+  logger.info(`${req.method} ${req.originalUrl}`);
+  next();
+});
 
 // Session configuration
 app.use(
@@ -112,7 +119,7 @@ app.get("/api/health", async (req, res) => {
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-  console.error("Error:", err);
+  logger.error("Error:", err);
   res.status(err.status || 500).json({
     error: err.message || "Internal server error",
     ...(process.env.NODE_ENV === "development" && { stack: err.stack }),
@@ -120,10 +127,10 @@ app.use((err, req, res, next) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 Cloud Deploy Portal API running on http://localhost:${PORT}`);
-  console.log(`📦 Supported providers: AWS, Azure`);
+  logger.info(`🚀 Cloud Deploy Portal API running on http://localhost:${PORT}`);
+  logger.info(`📦 Supported providers: AWS, Azure`);
   if (process.env.USE_PRECONFIGURED_CREDENTIALS === "true") {
-    console.log(`🔐 Pre-configured credentials enabled`);
+    logger.info(`🔐 Pre-configured credentials enabled`);
   }
 });
 
