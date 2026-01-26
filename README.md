@@ -38,7 +38,7 @@ This project was built as a **learning tool and proof of concept** to demonstrat
 - **Multi-Cloud** — AWS and Azure from a single dashboard
 - **20+ Services** — EC2, S3, Lambda, VMs, Storage Accounts, and more
 - **Terraform Templates** — Learn IaC by exploring real templates
-- **Secure** — AES-256 encrypted credentials, session-based auth
+- **Secure Credentials** — Auto-generated SSH keys & passwords, instant download
 - **Modern Stack** — React + Vite frontend, Express.js backend
 
 ---
