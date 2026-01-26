@@ -1,4 +1,4 @@
-<![CDATA[# 🚀 Autos-Infrastructure
+# 🚀 Autos-Infrastructure
 
 <div align="center">
 
@@ -9,7 +9,7 @@
 
 **Deploy cloud resources with a single click — no complex CLI commands, no steep learning curve.**
 
-*A learning-focused project for exploring AWS & Azure infrastructure automation*
+_A learning-focused project for exploring AWS & Azure infrastructure automation_
 
 [Features](#-features) • [Quick Start](#-quick-start) • [Architecture](#-architecture) • [Learning Goals](#-learning-goals)
 
@@ -103,19 +103,19 @@ autos-infrastructure/
 
 ## 📦 Supported Resources
 
-| AWS | Azure |
-|-----|-------|
-| EC2 | Virtual Machines |
-| S3 | Storage Accounts |
-| VPC | Virtual Networks |
-| Lambda | Functions |
-| RDS | SQL Database |
-| DynamoDB | CosmosDB |
-| ECS | Container Instances |
-| SNS | Service Bus |
-| SQS | — |
-| CloudFront | CDN |
-| — | App Service |
+| AWS        | Azure               |
+| ---------- | ------------------- |
+| EC2        | Virtual Machines    |
+| S3         | Storage Accounts    |
+| VPC        | Virtual Networks    |
+| Lambda     | Functions           |
+| RDS        | SQL Database        |
+| DynamoDB   | CosmosDB            |
+| ECS        | Container Instances |
+| SNS        | Service Bus         |
+| SQS        | —                   |
+| CloudFront | CDN                 |
+| —          | App Service         |
 
 ---
 
@@ -123,23 +123,25 @@ autos-infrastructure/
 
 By exploring this project, you can learn:
 
-| Topic | What You'll Learn |
-|-------|-------------------|
-| **Full-Stack Development** | React frontend + Express.js backend integration |
-| **Cloud SDKs** | How to programmatically interact with AWS & Azure |
-| **Terraform** | Structure of IaC templates for various resources |
-| **Security** | Credential encryption, session management, CORS |
-| **Docker** | Multi-container applications with Docker Compose |
-| **API Design** | RESTful endpoints for cloud operations |
+| Topic                      | What You'll Learn                                 |
+| -------------------------- | ------------------------------------------------- |
+| **Full-Stack Development** | React frontend + Express.js backend integration   |
+| **Cloud SDKs**             | How to programmatically interact with AWS & Azure |
+| **Terraform**              | Structure of IaC templates for various resources  |
+| **Security**               | Credential encryption, session management, CORS   |
+| **Docker**                 | Multi-container applications with Docker Compose  |
+| **API Design**             | RESTful endpoints for cloud operations            |
 
 ---
 
 ## 🔐 Credentials Required
 
 **AWS:**
+
 - Access Key ID, Secret Access Key, Region
 
 **Azure (Service Principal):**
+
 - Tenant ID, Client ID, Client Secret, Subscription ID
 
 > ⚠️ **Note:** This is a learning project. For production, use proper secrets management (AWS Secrets Manager, Azure Key Vault).
@@ -148,14 +150,14 @@ By exploring this project, you can learn:
 
 ## ⚙️ Tech Stack
 
-| Layer | Technology |
-|-------|------------|
-| Frontend | React 18, Vite 5 |
-| Backend | Express.js, Node.js 18+ |
-| Database | PostgreSQL 16 |
-| Cache | Redis 7 |
-| Cloud | AWS SDK v3, Azure SDK |
-| IaC | Terraform |
+| Layer    | Technology              |
+| -------- | ----------------------- |
+| Frontend | React 18, Vite 5        |
+| Backend  | Express.js, Node.js 18+ |
+| Database | PostgreSQL 16           |
+| Cache    | Redis 7                 |
+| Cloud    | AWS SDK v3, Azure SDK   |
+| IaC      | Terraform               |
 
 ---
 
@@ -180,4 +182,3 @@ MIT License — free for learning and experimentation.
 **Built for learning cloud infrastructure automation** ☁️
 
 </div>
-]]>
