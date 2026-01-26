@@ -99,7 +99,21 @@ function App() {
       if (result.success) {
         // Generate custom success message
         const resourceName = selectedResource.name; // e.g., "S3 Bucket", "Virtual Machine"
-        const successMessage = `The ${resourceName} has been deployed successfully! 🚀`;
+        let successMessage = `The ${resourceName} has been deployed successfully! 🚀`;
+
+        // Handle Credential Download
+        if (result.credentials) {
+          const blob = new Blob([result.credentials.content], {
+            type: "text/plain",
+          });
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = result.credentials.filename;
+          a.click();
+          window.URL.revokeObjectURL(url);
+          successMessage += ` Credentials downloaded to ${result.credentials.filename}`;
+        }
 
         showAlert("success", successMessage);
         setShowDeployModal(false);

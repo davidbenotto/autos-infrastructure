@@ -182,31 +182,74 @@ export class AzureProvider {
         };
       }
 
+      // Credential Generation
+      let credentials = null;
+      let adminPassword = null;
+      let linuxConfiguration = null;
+
+      if (osType === "windows2022") {
+        adminPassword = `AutoDeploy${deploymentId.slice(0, 8)}!`; // Fallback simple password
+        credentials = {
+          type: "password",
+          filename: `${vmName}-password.txt`,
+          content: `Username: azureuser\nPassword: ${adminPassword}\nIP: ${pip.ipAddress || "dynamic"}`,
+        };
+      } else {
+        // Linux: Generate SSH Key
+        const { generateKeyPairSync } = await import("crypto");
+        const { publicKey, privateKey } = generateKeyPairSync("rsa", {
+          modulusLength: 2048,
+          publicKeyEncoding: { type: "pkcs1", format: "pem" },
+          privateKeyEncoding: { type: "pkcs1", format: "pem" },
+        });
+
+        linuxConfiguration = {
+          disablePasswordAuthentication: true,
+          ssh: {
+            publicKeys: [
+              {
+                path: `/home/azureuser/.ssh/authorized_keys`,
+                keyData: publicKey,
+              },
+            ],
+          },
+        };
+
+        credentials = {
+          type: "pem",
+          filename: `${vmName}-key.pem`,
+          content: privateKey,
+        };
+      }
+
       // Create VM
+      const vmParams = {
+        location: this.location,
+        hardwareProfile: { vmSize: options.vmSize || "Standard_B1s" },
+        storageProfile: {
+          imageReference: imageReference,
+          osDisk: {
+            createOption: "FromImage",
+            managedDisk: { storageAccountType: "Standard_LRS" },
+          },
+        },
+        osProfile: {
+          computerName: vmName,
+          adminUsername: "azureuser",
+          adminPassword: adminPassword, // Only used if windows or password auth
+          linuxConfiguration: linuxConfiguration,
+        },
+        networkProfile: { networkInterfaces: [{ id: nic.id }] },
+        tags: { DeploymentId: deploymentId, ManagedBy: "cloud-auto-deploy" },
+      };
+
       const vm = await computeClient.virtualMachines.beginCreateOrUpdateAndWait(
         this.resourceGroup,
         vmName,
-        {
-          location: this.location,
-          hardwareProfile: { vmSize: options.vmSize || "Standard_B1s" },
-          storageProfile: {
-            imageReference: imageReference,
-            osDisk: {
-              createOption: "FromImage",
-              managedDisk: { storageAccountType: "Standard_LRS" },
-            },
-          },
-          osProfile: {
-            computerName: vmName,
-            adminUsername: "azureuser",
-            adminPassword: `AutoDeploy${deploymentId.slice(0, 8)}!`,
-          },
-          networkProfile: { networkInterfaces: [{ id: nic.id }] },
-          tags: { DeploymentId: deploymentId, ManagedBy: "cloud-auto-deploy" },
-        },
+        vmParams,
       );
 
-      return {
+      const result = {
         success: true,
         deploymentId,
         resourceType: "vm",
@@ -218,6 +261,12 @@ export class AzureProvider {
           location: vm.location,
         },
       };
+
+      if (credentials) {
+        result.credentials = credentials;
+      }
+
+      return result;
     } catch (error) {
       return { success: false, deploymentId, error: error.message };
     }

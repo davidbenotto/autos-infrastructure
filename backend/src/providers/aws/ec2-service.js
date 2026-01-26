@@ -5,6 +5,7 @@ import {
   CreateVpcCommand,
   DeleteVpcCommand,
   CreateSubnetCommand,
+  CreateKeyPairCommand,
 } from "@aws-sdk/client-ec2";
 import { SSMClient, GetParameterCommand } from "@aws-sdk/client-ssm";
 import { v4 as uuidv4 } from "uuid";
@@ -60,11 +61,26 @@ export class AWSEC2Service {
     const deploymentId = uuidv4();
     const imageId = await this.getLatestAmi(options.osImage);
 
+    // Generate a unique key pair for this deployment
+    const keyName = `key-${deploymentId}`;
+    let keyMaterial = null;
+
+    try {
+      const keyPair = await this.ec2Client.send(
+        new CreateKeyPairCommand({ KeyName: keyName }),
+      );
+      keyMaterial = keyPair.KeyMaterial;
+    } catch (error) {
+      console.warn("Failed to create key pair:", error);
+      // Proceed without key if failed (fallback to no-key access or existing mechanisms)
+    }
+
     const params = {
       ImageId: imageId,
       InstanceType: options.instanceType || "t2.micro",
       MinCount: 1,
       MaxCount: 1,
+      KeyName: keyName, // Associate the generated key
       TagSpecifications: [
         {
           ResourceType: "instance",
@@ -84,7 +100,8 @@ export class AWSEC2Service {
       const response = await this.ec2Client.send(
         new RunInstancesCommand(params),
       );
-      return {
+
+      const result = {
         success: true,
         deploymentId,
         resourceType: "ec2",
@@ -95,8 +112,20 @@ export class AWSEC2Service {
           imageId: imageId,
           osImage: options.osImage || "ubuntu24",
           state: response.Instances[0].State.Name,
+          keyName: keyName,
         },
       };
+
+      // Include credentials if generated
+      if (keyMaterial) {
+        result.credentials = {
+          type: "pem",
+          filename: `${options.name || "ec2"}-${deploymentId.slice(0, 4)}.pem`,
+          content: keyMaterial,
+        };
+      }
+
+      return result;
     } catch (error) {
       return { success: false, deploymentId, error: error.message };
     }
