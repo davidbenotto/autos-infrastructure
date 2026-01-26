@@ -1,27 +1,45 @@
-<![CDATA[# ☁️ Cloud Deploy Portal
+<![CDATA[# 🚀 Autos-Infrastructure
 
 <div align="center">
 
 ![Version](https://img.shields.io/badge/version-3.0.0-blue.svg)
 ![Node](https://img.shields.io/badge/node-18%2B-green.svg)
+![Purpose](https://img.shields.io/badge/purpose-Learning%20%2F%20POC-orange.svg)
 ![License](https://img.shields.io/badge/license-MIT-purple.svg)
 
-**A self-service web portal for deploying cloud infrastructure on AWS and Azure with a single click.**
+**Deploy cloud resources with a single click — no complex CLI commands, no steep learning curve.**
 
-[Features](#-features) • [Quick Start](#-quick-start) • [Architecture](#-architecture) • [Supported Resources](#-supported-resources) • [Contributing](#-contributing)
+*A learning-focused project for exploring AWS & Azure infrastructure automation*
+
+[Features](#-features) • [Quick Start](#-quick-start) • [Architecture](#-architecture) • [Learning Goals](#-learning-goals)
 
 </div>
 
 ---
 
+## 🎯 Project Goals
+
+This project was built as a **learning tool and proof of concept** to demonstrate:
+
+- How to build a unified interface for multi-cloud deployments
+- Infrastructure as Code (IaC) with Terraform
+- Full-stack development with React and Node.js
+- Cloud provider SDK integrations (AWS & Azure)
+- Secure credential handling in web applications
+
+> **Who is this for?**  
+> DevOps engineers, students, developers, and anyone curious about cloud automation who wants to understand how infrastructure deployment works under the hood.
+
+---
+
 ## ✨ Features
 
-- **Multi-Cloud Support** — Deploy to AWS and Azure from a unified interface
-- **20+ Cloud Services** — EC2, S3, Lambda, VMs, Storage Accounts, and more
-- **Infrastructure as Code** — Terraform templates included for each resource type
-- **Secure by Design** — AES-256 credential encryption, session-based auth, no credentials stored on disk
-- **Modern Stack** — React + Vite frontend, Express.js backend, PostgreSQL + Redis
-- **Docker Ready** — Full Docker Compose setup for local development
+- **One-Click Deployments** — Select a resource, click deploy, done
+- **Multi-Cloud** — AWS and Azure from a single dashboard
+- **20+ Services** — EC2, S3, Lambda, VMs, Storage Accounts, and more
+- **Terraform Templates** — Learn IaC by exploring real templates
+- **Secure** — AES-256 encrypted credentials, session-based auth
+- **Modern Stack** — React + Vite frontend, Express.js backend
 
 ---
 
@@ -31,21 +49,20 @@
 
 - **Node.js** 18+
 - **npm** or **yarn**
-- **Docker** & **Docker Compose** (optional, for containerized setup)
+- **Docker** (optional)
 
-### Option 1: Run Locally
+### Run Locally
 
 **1. Start the Backend:**
 
 ```bash
 cd backend
 cp .env.example .env
-# Edit .env with your configuration
 npm install
 npm run dev
 ```
 
-**2. Start the Frontend (new terminal):**
+**2. Start the Frontend:**
 
 ```bash
 cd frontend
@@ -53,152 +70,83 @@ npm install
 npm run dev
 ```
 
-**3. Open your browser:** Navigate to `http://localhost:5173`
+**3. Open:** `http://localhost:5173`
 
-### Option 2: Run with Docker
+### Run with Docker
 
 ```bash
-# Copy and configure environment variables
 cp backend/.env.example backend/.env
-# Edit backend/.env with your settings
-
-# Start all services
 docker-compose up --build
 ```
-
-This will start:
-- **PostgreSQL** (port 5432) — Database
-- **Redis** (port 6379) — Session storage
-- **Backend API** (port 3001) — Express.js server
-- **Frontend** (port 5173) — React application
 
 ---
 
 ## 🏗️ Architecture
 
 ```
-cloud-deploy-portal/
-├── backend/                 # Express.js API Server
-│   ├── src/
-│   │   ├── providers/       # AWS & Azure SDK integrations
-│   │   ├── routes/          # REST API endpoints
-│   │   ├── services/        # Business logic layer
-│   │   └── server.js        # Application entry point
-│   ├── db/                  # Database migrations & seeds
-│   └── .env.example         # Environment template
-├── frontend/                # React + Vite SPA
-│   ├── src/
-│   │   ├── components/      # UI components
-│   │   ├── services/        # API client
-│   │   └── styles/          # CSS styles
-│   └── vite.config.js       # Vite configuration
-├── terraform/               # Infrastructure as Code
-│   ├── aws/                 # AWS resource templates
-│   └── azure/               # Azure resource templates
-└── docker-compose.yml       # Container orchestration
+autos-infrastructure/
+├── backend/          # Express.js API
+│   └── src/
+│       ├── providers/   # AWS & Azure SDKs
+│       ├── routes/      # API endpoints
+│       └── services/    # Business logic
+├── frontend/         # React + Vite
+│   └── src/
+│       ├── components/  # UI components
+│       └── services/    # API client
+└── terraform/        # IaC templates
+    ├── aws/            # 10 AWS resources
+    └── azure/          # 10 Azure resources
 ```
 
 ---
 
 ## 📦 Supported Resources
 
-### AWS Services
-
-| Service | Description |
-|---------|-------------|
-| **EC2** | Virtual machines |
-| **S3** | Object storage |
-| **VPC** | Virtual networking |
-| **Lambda** | Serverless functions |
-| **RDS** | Managed databases |
-| **DynamoDB** | NoSQL database |
-| **ECS** | Container orchestration |
-| **SNS** | Notification service |
-| **SQS** | Message queuing |
-| **CloudFront** | CDN distribution |
-
-### Azure Services
-
-| Service | Description |
-|---------|-------------|
-| **Virtual Machines** | Compute instances |
-| **Storage Accounts** | Blob/File storage |
-| **Virtual Networks** | Network infrastructure |
-| **App Service** | Web app hosting |
-| **Functions** | Serverless compute |
-| **SQL Database** | Managed SQL |
-| **CosmosDB** | NoSQL database |
-| **Container Instances** | Container hosting |
-| **Service Bus** | Message broker |
-| **CDN** | Content delivery |
+| AWS | Azure |
+|-----|-------|
+| EC2 | Virtual Machines |
+| S3 | Storage Accounts |
+| VPC | Virtual Networks |
+| Lambda | Functions |
+| RDS | SQL Database |
+| DynamoDB | CosmosDB |
+| ECS | Container Instances |
+| SNS | Service Bus |
+| SQS | — |
+| CloudFront | CDN |
+| — | App Service |
 
 ---
 
-## 🔐 Security
+## 📚 Learning Goals
 
-### Credential Management
+By exploring this project, you can learn:
 
-- **AES-256 Encryption** — All credentials are encrypted in memory
-- **Session-Based** — Credentials tied to user sessions (30-minute expiry)
-- **Zero Persistence** — No credentials written to disk or logs
+| Topic | What You'll Learn |
+|-------|-------------------|
+| **Full-Stack Development** | React frontend + Express.js backend integration |
+| **Cloud SDKs** | How to programmatically interact with AWS & Azure |
+| **Terraform** | Structure of IaC templates for various resources |
+| **Security** | Credential encryption, session management, CORS |
+| **Docker** | Multi-container applications with Docker Compose |
+| **API Design** | RESTful endpoints for cloud operations |
 
-### Required Credentials
+---
+
+## 🔐 Credentials Required
 
 **AWS:**
-- Access Key ID
-- Secret Access Key
-- Region
+- Access Key ID, Secret Access Key, Region
 
 **Azure (Service Principal):**
-- Tenant ID
-- Client ID
-- Client Secret
-- Subscription ID
+- Tenant ID, Client ID, Client Secret, Subscription ID
 
-> ⚠️ **Production Note:** For production deployments, integrate with proper secrets management solutions (AWS Secrets Manager, Azure Key Vault, HashiCorp Vault).
+> ⚠️ **Note:** This is a learning project. For production, use proper secrets management (AWS Secrets Manager, Azure Key Vault).
 
 ---
 
-## ⚙️ Configuration
-
-Create a `.env` file in the `backend/` directory based on `.env.example`:
-
-```env
-# Server Configuration
-PORT=3001
-NODE_ENV=development
-
-# Session Secret (use a strong random string in production)
-SESSION_SECRET=your-super-secret-session-key
-
-# Encryption Key (32 bytes hex)
-ENCRYPTION_KEY=0123456789abcdef0123456789abcdef
-
-# CORS Settings
-FRONTEND_URL=http://localhost:5173
-```
-
----
-
-## 🛠️ Development
-
-### Available Scripts
-
-**Backend:**
-```bash
-npm run dev    # Start with hot-reload
-npm start      # Production start
-npm test       # Run tests
-```
-
-**Frontend:**
-```bash
-npm run dev      # Development server
-npm run build    # Production build
-npm run preview  # Preview production build
-```
-
-### Tech Stack
+## ⚙️ Tech Stack
 
 | Layer | Technology |
 |-------|------------|
@@ -206,31 +154,30 @@ npm run preview  # Preview production build
 | Backend | Express.js, Node.js 18+ |
 | Database | PostgreSQL 16 |
 | Cache | Redis 7 |
-| AWS SDK | @aws-sdk/* v3 |
-| Azure SDK | @azure/arm-* latest |
-| Security | Helmet, crypto-js |
+| Cloud | AWS SDK v3, Azure SDK |
+| IaC | Terraform |
 
 ---
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+This is a learning project — contributions, suggestions, and improvements are welcome!
 
 1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+2. Create a feature branch
+3. Submit a Pull Request
 
 ---
 
 ## 📄 License
 
-This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
+MIT License — free for learning and experimentation.
 
 ---
 
 <div align="center">
-Made with ❤️ for cloud infrastructure automation
+
+**Built for learning cloud infrastructure automation** ☁️
+
 </div>
 ]]>
