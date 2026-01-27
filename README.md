@@ -83,7 +83,42 @@ docker-compose up --build
 
 ## 🏗️ Architecture
 
+```mermaid
+graph TD
+    User((User))
+
+    subgraph "Frontend"
+        React[React + Vite App]
+    end
+
+    subgraph "Backend"
+        API[Express.js API]
+        Providers[Cloud Providers]
+    end
+
+    subgraph "Infrastructure"
+        direction LR
+        AWS[AWS]
+        Azure[Azure]
+        Terraform[Terraform]
+    end
+
+    User -->|Browser| React
+    React -->|REST API| API
+    API -->|SDK| Providers
+    Providers -->|Generate| Terraform
+    Terraform -->|Apply| AWS
+    Terraform -->|Apply| Azure
+
+    style User fill:#f9f,stroke:#333
+    style React fill:#61dafb,stroke:#333
+    style API fill:#68a063,stroke:#333
+    style Terraform fill:#7b42bc,stroke:#333,color:#fff
 ```
+
+### Directory Structure
+
+```text
 autos-infrastructure/
 ├── backend/          # Express.js API
 │   └── src/
