@@ -2,6 +2,8 @@
 
 <div align="center">
 
+![Autos-Infrastructure Architecture](./architecture.jpg)
+
 ![Version](https://img.shields.io/badge/version-3.0.0-blue.svg)
 ![Node](https://img.shields.io/badge/node-18%2B-green.svg)
 ![Purpose](https://img.shields.io/badge/purpose-Learning%20%2F%20POC-orange.svg)
@@ -83,38 +85,7 @@ docker-compose up --build
 
 ## 🏗️ Architecture
 
-```mermaid
-graph TD
-    User((User))
-
-    subgraph "Frontend"
-        React[React + Vite App]
-    end
-
-    subgraph "Backend"
-        API[Express.js API]
-        Providers[Cloud Providers]
-    end
-
-    subgraph "Infrastructure"
-        direction LR
-        AWS[AWS]
-        Azure[Azure]
-        Terraform[Terraform]
-    end
-
-    User -->|Browser| React
-    React -->|REST API| API
-    API -->|SDK| Providers
-    Providers -->|Generate| Terraform
-    Terraform -->|Apply| AWS
-    Terraform -->|Apply| Azure
-
-    style User fill:#f9f,stroke:#333
-    style React fill:#61dafb,stroke:#333
-    style API fill:#68a063,stroke:#333
-    style Terraform fill:#7b42bc,stroke:#333,color:#fff
-```
+(See project overview above)
 
 ### Directory Structure
 
