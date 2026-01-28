@@ -7,6 +7,7 @@ import {
   useMemo,
   useRef,
 } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { setOrgHeadersGetter } from "../services/api";
 
 // Use relative path to leverage Vite proxy in development
@@ -19,11 +20,9 @@ const STORAGE_KEY = "cloudportal_current_org";
 const ADMIN_KEY = "cloudportal_admin_mode";
 
 export function OrganizationProvider({ children }) {
-  const [organizations, setOrganizations] = useState([]);
+  const queryClient = useQueryClient();
   const [currentOrg, setCurrentOrgState] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
 
   // Refs for API header getter
   const currentOrgRef = useRef(currentOrg);
@@ -48,43 +47,45 @@ export function OrganizationProvider({ children }) {
     });
   }, []);
 
-  const fetchOrganizations = useCallback(async () => {
-    try {
-      setError(null);
+  const {
+    data: organizations = [],
+    isLoading,
+    error: queryError,
+    refetch,
+  } = useQuery({
+    queryKey: ["organizations"],
+    queryFn: async () => {
       const response = await fetch(`${API_URL}/api/organizations`);
       if (!response.ok) throw new Error("Failed to fetch organizations");
+      return response.json();
+    },
+  });
 
-      const data = await response.json();
-      setOrganizations(data);
+  // Calculate derived state
+  const loading = isLoading;
+  const error = queryError ? queryError.message : null;
 
-      // Restore saved org from localStorage
-      const savedOrgId = localStorage.getItem(STORAGE_KEY);
-      const savedAdmin = localStorage.getItem(ADMIN_KEY) === "true";
-
-      if (savedAdmin) {
-        setIsAdmin(true);
-      } else if (savedOrgId) {
-        const savedOrg = data.find((o) => o.id === savedOrgId);
-        if (savedOrg) {
-          setCurrentOrgState(savedOrg);
-        } else if (data.length > 0) {
-          setCurrentOrgState(data[0]);
-        }
-      } else if (data.length > 0) {
-        setCurrentOrgState(data[0]);
-      }
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to fetch organizations",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
+  // Restore saved org logic - runs when organizations load
   useEffect(() => {
-    fetchOrganizations();
-  }, [fetchOrganizations]);
+    if (isLoading || organizations.length === 0) return;
+
+    const savedAdmin = localStorage.getItem(ADMIN_KEY) === "true";
+    const savedOrgId = localStorage.getItem(STORAGE_KEY);
+
+    if (savedAdmin) {
+      setIsAdmin(true);
+    } else if (!currentOrg && savedOrgId) {
+      // Restore org only if not already set
+      const savedOrg = organizations.find((o) => o.id === savedOrgId);
+      if (savedOrg) {
+        setCurrentOrgState(savedOrg);
+      } else {
+        setCurrentOrgState(organizations[0]);
+      }
+    } else if (!currentOrg && !isAdmin) {
+      setCurrentOrgState(organizations[0]);
+    }
+  }, [organizations, isLoading]); // Removed dependencies that cause loops
 
   const setCurrentOrg = useCallback((org) => {
     setCurrentOrgState(org);
@@ -115,72 +116,76 @@ export function OrganizationProvider({ children }) {
     [organizations],
   );
 
-  const createOrganization = useCallback(
-    async ({ name, slug, description }) => {
+  const createMutation = useMutation({
+    mutationFn: async ({ name, slug, description }) => {
       const response = await fetch(`${API_URL}/api/organizations`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, slug, description }),
       });
-
       if (!response.ok) {
         const err = await response.json();
         throw new Error(err.error || "Failed to create organization");
       }
-
-      const newOrg = await response.json();
-      setOrganizations((prev) => [...prev, newOrg]);
-      return newOrg;
+      return response.json();
     },
-    [],
-  );
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["organizations"] });
+    },
+  });
 
-  const updateOrganization = useCallback(
-    async (id, updates) => {
+  const createOrganization = (data) => createMutation.mutateAsync(data);
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, updates }) => {
       const response = await fetch(`${API_URL}/api/organizations/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updates),
       });
-
       if (!response.ok) {
         const err = await response.json();
         throw new Error(err.error || "Failed to update organization");
       }
-
-      const updated = await response.json();
-      setOrganizations((prev) =>
-        prev.map((o) => (o.id === id ? { ...o, ...updated } : o)),
-      );
-      if (currentOrg?.id === id) {
+      return response.json();
+    },
+    onSuccess: (updated) => {
+      queryClient.invalidateQueries({ queryKey: ["organizations"] });
+      // Update local state if current org was updated
+      if (currentOrg?.id === updated.id) {
         setCurrentOrgState((prev) => ({ ...prev, ...updated }));
       }
-      return updated;
     },
-    [currentOrg],
-  );
+  });
 
-  const deleteOrganization = useCallback(
-    async (id) => {
+  const updateOrganization = (id, updates) =>
+    updateMutation.mutateAsync({ id, updates });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id) => {
       const response = await fetch(`${API_URL}/api/organizations/${id}`, {
         method: "DELETE",
       });
-
       if (!response.ok) {
         const err = await response.json();
         throw new Error(err.error || "Failed to delete organization");
       }
-
-      setOrganizations((prev) => prev.filter((o) => o.id !== id));
-      if (currentOrg?.id === id) {
-        const remaining = organizations.filter((o) => o.id !== id);
+      return id;
+    },
+    onSuccess: (deletedId) => {
+      queryClient.invalidateQueries({ queryKey: ["organizations"] });
+      if (currentOrg?.id === deletedId) {
+        const remaining = organizations.filter((o) => o.id !== deletedId);
         if (remaining.length > 0) {
           setCurrentOrg(remaining[0]);
+        } else {
+          setCurrentOrgState(null);
         }
       }
     },
-    [currentOrg, organizations, setCurrentOrg],
-  );
+  });
+
+  const deleteOrganization = (id) => deleteMutation.mutateAsync(id);
 
   // Get headers for API calls
   const getOrgHeaders = useCallback(() => {
@@ -207,7 +212,7 @@ export function OrganizationProvider({ children }) {
       updateOrganization,
       deleteOrganization,
       getOrgHeaders,
-      refetch: fetchOrganizations,
+      refetch,
     }),
     [
       organizations,
@@ -221,7 +226,7 @@ export function OrganizationProvider({ children }) {
       updateOrganization,
       deleteOrganization,
       getOrgHeaders,
-      fetchOrganizations,
+      refetch,
     ],
   );
 

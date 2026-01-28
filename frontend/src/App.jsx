@@ -401,14 +401,19 @@ function MainContent() {
   );
 }
 
+import { QueryClientProvider } from "@tanstack/react-query";
+import { queryClient } from "./queryClient";
+
 function App() {
   return (
     <ErrorBoundary>
-      <OrganizationProvider>
-        <DeploymentProvider>
-          <MainContent />
-        </DeploymentProvider>
-      </OrganizationProvider>
+      <QueryClientProvider client={queryClient}>
+        <OrganizationProvider>
+          <DeploymentProvider>
+            <MainContent />
+          </DeploymentProvider>
+        </OrganizationProvider>
+      </QueryClientProvider>
     </ErrorBoundary>
   );
 }
