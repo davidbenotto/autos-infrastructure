@@ -1,10 +1,20 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import CredentialsModal from "./components/CredentialsModal";
 import ResourceSelector from "./components/ResourceSelector";
 import DeploymentList from "./components/DeploymentList";
 import DeployModal from "./components/DeployModal";
 import HistoryView from "./components/HistoryView";
+import OrgSelector from "./components/OrgSelector";
+import Sidebar from "./components/layout/Sidebar";
+import ErrorBoundary from "./components/ErrorBoundary";
 import { DeploymentProvider, useDeployment } from "./context/DeploymentContext";
+import {
+  OrganizationProvider,
+  useOrganization,
+} from "./context/OrganizationContext";
+import { Settings, ShieldCheck, Plus } from "lucide-react";
+import ManageView from "./components/ManageView";
+import { motion, AnimatePresence } from "framer-motion";
 
 function MainContent() {
   const {
@@ -40,17 +50,13 @@ function MainContent() {
   };
 
   const onDeploySubmit = async (options) => {
-    // Clear previous errors
     setSelectedResource({ ...selectedResource, error: null });
-
     const response = await actions.deploy(selectedResource, options);
 
     if (response.success) {
       const result = response.result;
-      const resourceName = selectedResource.name;
-      let successMessage = `The ${resourceName} has been deployed successfully! 🚀`;
+      let successMessage = `Deployed ${selectedResource.name} successfully! 🚀`;
 
-      // Handle Credential Download
       if (result.credentials) {
         const blob = new Blob([result.credentials.content], {
           type: "text/plain",
@@ -61,226 +67,316 @@ function MainContent() {
         a.download = result.credentials.filename;
         a.click();
         window.URL.revokeObjectURL(url);
-        successMessage += ` Credentials downloaded to ${result.credentials.filename}`;
+        successMessage += ` Credentials downloaded.`;
       }
 
       showAlert("success", successMessage);
       setShowDeployModal(false);
       setSelectedResource(null);
     } else {
-      const errorMsg =
-        response.error || "Deployment failed - no error details provided";
-      setSelectedResource({ ...selectedResource, error: errorMsg });
+      setSelectedResource({
+        ...selectedResource,
+        error: response.error || "Deployment failed",
+      });
     }
   };
 
   const onCredentialsSubmit = async (creds) => {
     const success = await actions.saveCredentials(creds);
-    if (success) {
-      setShowCredentialsModal(false);
-    }
+    if (success) setShowCredentialsModal(false);
   };
 
-  // Group resources by category
-  const groupedResources = (resources[provider] || []).reduce(
-    (acc, resource) => {
-      const category = resource.category || "Other";
-      if (!acc[category]) acc[category] = [];
-      acc[category].push(resource);
-      return acc;
-    },
-    {},
-  );
+  const providerColors = {
+    aws: "linear-gradient(135deg, #FF990020, #FF990005)",
+    azure: "linear-gradient(135deg, #0078D420, #0078D405)",
+    gcp: "linear-gradient(135deg, #4285F420, #4285F405)",
+  };
 
   return (
-    <div className="app">
-      <header className="header">
-        <div className="header-content">
-          <div className="logo">
-            <span className="logo-icon">🚀</span>
-            <span>Cloud Auto Deploy</span>
+    <div
+      className="app-container"
+      style={{
+        display: "flex",
+        minHeight: "100vh",
+        background: "var(--bg-dark)",
+      }}
+    >
+      <Sidebar
+        currentView={currentView}
+        setCurrentView={setCurrentView}
+        provider={provider}
+        setProvider={setProvider}
+        onDisconnect={actions.disconnect}
+      />
+
+      <main
+        style={{
+          marginLeft: "var(--sidebar-width)",
+          flex: 1,
+          padding: "2rem 3rem",
+        }}
+      >
+        {/* Header Area */}
+        <header
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: "3rem",
+          }}
+        >
+          <div>
+            <h1
+              style={{
+                fontSize: "2rem",
+                fontWeight: "700",
+                marginBottom: "0.5rem",
+              }}
+            >
+              {currentView === "dashboard" ? "Dashboard" : "Deployment History"}
+            </h1>
+            <p style={{ color: "var(--text-secondary)" }}>
+              Manage your cloud infrastructure on{" "}
+              {provider === "aws"
+                ? "Amazon Web Services"
+                : provider === "azure"
+                  ? "Microsoft Azure"
+                  : "Google Cloud"}
+            </p>
           </div>
 
-          <div style={{ display: "flex", gap: "2rem", alignItems: "center" }}>
-            <nav className="main-nav" style={{ display: "flex", gap: "1rem" }}>
-              <button
-                className={`nav-btn ${currentView === "dashboard" ? "active" : ""}`}
-                onClick={() => setCurrentView("dashboard")}
-                style={{
-                  background: "none",
-                  border: "none",
-                  color:
-                    currentView === "dashboard"
-                      ? "var(--text-primary)"
-                      : "var(--text-secondary)",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  padding: "0.5rem",
-                  borderBottom:
-                    currentView === "dashboard"
-                      ? "2px solid var(--text-primary)"
-                      : "2px solid transparent",
-                  transition: "all 0.2s",
-                }}
-              >
-                Dashboard
-              </button>
-              <button
-                className={`nav-btn ${currentView === "history" ? "active" : ""}`}
-                onClick={() => setCurrentView("history")}
-                style={{
-                  background: "none",
-                  border: "none",
-                  color:
-                    currentView === "history"
-                      ? "var(--text-primary)"
-                      : "var(--text-secondary)",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  padding: "0.5rem",
-                  borderBottom:
-                    currentView === "history"
-                      ? "2px solid var(--text-primary)"
-                      : "2px solid transparent",
-                  transition: "all 0.2s",
-                }}
-              >
-                📜 History
-              </button>
-            </nav>
-
-            <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "1rem",
+            }}
+          >
+            <OrgSelector />
+            <div
+              className="glass-panel"
+              style={{
+                padding: "0.75rem 1.5rem",
+                borderRadius: "var(--radius-md)",
+                display: "flex",
+                alignItems: "center",
+                gap: "1rem",
+              }}
+            >
               {isConnected ? (
-                <>
-                  <div className="credential-status connected">
-                    ✓ {isPreconfigured ? "Auto-connected" : "Connected"} to{" "}
-                    {provider.toUpperCase()}
-                  </div>
-                  {!isPreconfigured && (
-                    <button
-                      className="btn btn-secondary"
-                      onClick={actions.disconnect}
-                    >
-                      Disconnect
-                    </button>
-                  )}
-                </>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.5rem",
+                    color: "var(--success)",
+                    cursor: "pointer",
+                  }}
+                  onClick={() => setShowCredentialsModal(true)}
+                  title="Click to switch account"
+                >
+                  <ShieldCheck size={18} />
+                  <span style={{ fontWeight: 600 }}>Connected</span>
+                  <Settings
+                    size={14}
+                    style={{ marginLeft: "4px", opacity: 0.7 }}
+                  />
+                </div>
               ) : (
                 <button
-                  className={`btn ${provider === "aws" ? "btn-aws" : "btn-azure"}`}
                   onClick={() => setShowCredentialsModal(true)}
+                  style={{
+                    background: "var(--primary)",
+                    color: "white",
+                    border: "none",
+                    padding: "0.5rem 1rem",
+                    borderRadius: "var(--radius-sm)",
+                    cursor: "pointer",
+                    fontWeight: 600,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.5rem",
+                  }}
                 >
-                  🔑 Connect {provider.toUpperCase()}
+                  <Settings size={18} />
+                  Connect Credentials
                 </button>
               )}
             </div>
           </div>
-        </div>
-      </header>
+        </header>
 
-      <main className="main-content">
         {alert && (
-          <div className={`alert alert-${alert.type}`}>
-            {alert.type === "success" && "✓ "}
-            {alert.type === "error" && "✕ "}
-            {alert.type === "warning" && "⚠ "}
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className={`alert alert-${alert.type}`}
+            style={{
+              marginBottom: "2rem",
+              padding: "1rem",
+              borderRadius: "var(--radius-md)",
+              background:
+                alert.type === "error"
+                  ? "rgba(239, 68, 68, 0.2)"
+                  : "rgba(16, 185, 129, 0.2)",
+              border: `1px solid ${alert.type === "error" ? "var(--error)" : "var(--success)"}`,
+              color: "white",
+            }}
+          >
             {alert.message}
-          </div>
+          </motion.div>
         )}
 
-        {currentView === "dashboard" ? (
-          <>
-            <div className="provider-tabs">
-              <button
-                className={`tab-btn aws ${provider === "aws" ? "active" : ""}`}
-                onClick={() => setProvider("aws")}
+        <AnimatePresence mode="wait">
+          {currentView === "dashboard" ? (
+            <motion.div
+              key={provider}
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              transition={{ duration: 0.3 }}
+            >
+              {/* Stats / Hero Section */}
+              <div
+                className="glass-card"
+                style={{
+                  padding: "2rem",
+                  borderRadius: "var(--radius-lg)",
+                  marginBottom: "3rem",
+                  background: providerColors[provider],
+                  border: "1px solid rgba(255,255,255,0.1)",
+                }}
               >
-                <span className="tab-icon">🟠</span>
-                AWS
-                <span className="service-count">
-                  {resources.aws?.length || 0} services
-                </span>
-                {credentialStatus.aws?.configured && (
-                  <span className="tab-check">✓</span>
-                )}
-              </button>
-              <button
-                className={`tab-btn azure ${provider === "azure" ? "active" : ""}`}
-                onClick={() => setProvider("azure")}
-              >
-                <span className="tab-icon">🔵</span>
-                Azure
-                <span className="service-count">
-                  {resources.azure?.length || 0} services
-                </span>
-                {credentialStatus.azure?.configured && (
-                  <span className="tab-check">✓</span>
-                )}
-              </button>
-            </div>
-
-            <div className="section-header">
-              <h2>Deploy {provider.toUpperCase()} Resources</h2>
-              <p>
-                {resources[provider]?.length || 0} services available • Click
-                any card to deploy
-              </p>
-            </div>
-
-            {initialLoading ? (
-              <div className="empty-state">
-                <div className="spinner" style={{ margin: "0 auto" }}></div>
-                <p style={{ marginTop: "1rem" }}>Loading services...</p>
-              </div>
-            ) : (
-              Object.entries(groupedResources).map(
-                ([category, categoryResources]) => (
-                  <div key={category} className="category-section">
-                    <h3 className="category-title">{category}</h3>
-                    <ResourceSelector
-                      resources={categoryResources}
-                      onSelect={handleResourceSelect}
-                      provider={provider}
-                    />
+                <div style={{ display: "flex", gap: "3rem" }}>
+                  <div>
+                    <p
+                      style={{
+                        color: "var(--text-muted)",
+                        marginBottom: "0.5rem",
+                      }}
+                    >
+                      Available Services
+                    </p>
+                    <h2 style={{ fontSize: "2.5rem", margin: 0 }}>
+                      {resources[provider]?.length || 0}
+                    </h2>
                   </div>
-                ),
-              )
-            )}
+                  <div>
+                    <p
+                      style={{
+                        color: "var(--text-muted)",
+                        marginBottom: "0.5rem",
+                      }}
+                    >
+                      Active Deployments
+                    </p>
+                    <h2 style={{ fontSize: "2.5rem", margin: 0 }}>
+                      {
+                        deployments.filter(
+                          (d) =>
+                            d.provider === provider && d.status === "active",
+                        ).length
+                      }
+                    </h2>
+                  </div>
+                </div>
+              </div>
 
-            <div className="section-header" style={{ marginTop: "4rem" }}>
-              <h2>Active Deployments</h2>
-              <p>
-                {
-                  deployments.filter(
-                    (d) =>
-                      d.provider === provider &&
-                      ["active", "failed"].includes(d.status),
-                  ).length
-                }{" "}
-                active & failed resources
-              </p>
-            </div>
+              {initialLoading ? (
+                <div className="spinner"></div>
+              ) : (
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns:
+                      "repeat(auto-fill, minmax(280px, 1fr))",
+                    gap: "1.5rem",
+                  }}
+                >
+                  {(resources[provider] || []).map((resource) => (
+                    <motion.div
+                      whileHover={{ y: -5 }}
+                      key={resource.id}
+                      className="glass-card resource-card"
+                      onClick={() => handleResourceSelect(resource)}
+                      style={{
+                        padding: "1.5rem",
+                        borderRadius: "var(--radius-md)",
+                        cursor: "pointer",
+                        position: "relative",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: "2.5rem",
+                          marginBottom: "1rem",
+                        }}
+                      >
+                        {resource.icon}
+                      </div>
+                      <h4
+                        style={{
+                          fontSize: "1.1rem",
+                          marginBottom: "0.5rem",
+                        }}
+                      >
+                        {resource.name}
+                      </h4>
+                      <p
+                        style={{
+                          color: "var(--text-muted)",
+                          fontSize: "0.9rem",
+                          lineHeight: "1.5",
+                        }}
+                      >
+                        {resource.description}
+                      </p>
 
-            <DeploymentList
-              deployments={deployments.filter(
-                (d) =>
-                  d.provider === provider &&
-                  ["active", "failed"].includes(d.status),
+                      <div
+                        style={{
+                          marginTop: "1.5rem",
+                          display: "flex",
+                          justifyContent: "flex-end",
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontSize: "0.8rem",
+                            color: "var(--primary)",
+                            fontWeight: 600,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "4px",
+                          }}
+                        >
+                          <Plus size={14} /> Deploy
+                        </span>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
               )}
+            </motion.div>
+          ) : currentView === "manage" ? (
+            <ManageView
+              provider={provider}
+              resources={resources[provider] || []}
+              deployments={deployments}
               onDestroy={actions.destroy}
               loading={loading}
             />
-          </>
-        ) : (
-          <HistoryView
-            deployments={deployments}
-            onDestroy={actions.destroy}
-            loading={loading}
-          />
-        )}
+          ) : (
+            <HistoryView
+              deployments={deployments}
+              onDestroy={actions.destroy}
+              loading={loading}
+            />
+          )}
+        </AnimatePresence>
       </main>
 
-      {showCredentialsModal && !isPreconfigured && (
+      {showCredentialsModal && (
         <CredentialsModal
           provider={provider}
           onClose={() => setShowCredentialsModal(false)}
@@ -307,9 +403,13 @@ function MainContent() {
 
 function App() {
   return (
-    <DeploymentProvider>
-      <MainContent />
-    </DeploymentProvider>
+    <ErrorBoundary>
+      <OrganizationProvider>
+        <DeploymentProvider>
+          <MainContent />
+        </DeploymentProvider>
+      </OrganizationProvider>
+    </ErrorBoundary>
   );
 }
 

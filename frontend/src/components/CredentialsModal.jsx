@@ -1,18 +1,23 @@
 import { useState } from "react";
 
 function CredentialsModal({ provider, onClose, onSave, loading }) {
-  const [formData, setFormData] = useState(
-    provider === "aws"
-      ? { accessKeyId: "", secretAccessKey: "", region: "us-east-1" }
-      : {
-          tenantId: "",
-          clientId: "",
-          clientSecret: "",
-          subscriptionId: "",
-          resourceGroup: "cloud-portal-rg",
-          location: "eastus",
-        },
-  );
+  // Initialize form data based on provider
+  const [formData, setFormData] = useState(() => {
+    if (provider === "aws") {
+      return { accessKeyId: "", secretAccessKey: "", region: "us-east-1" };
+    } else if (provider === "gcp") {
+      return { projectId: "", clientEmail: "", privateKey: "" };
+    } else {
+      return {
+        tenantId: "",
+        clientId: "",
+        clientSecret: "",
+        subscriptionId: "",
+        resourceGroup: "cloud-portal-rg",
+        location: "eastus",
+      };
+    }
+  });
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -30,6 +35,7 @@ function CredentialsModal({ provider, onClose, onSave, loading }) {
     "us-west-2",
     "eu-west-1",
     "eu-west-2",
+    "eu-west-3",
     "eu-central-1",
     "ap-southeast-1",
     "ap-southeast-2",
@@ -49,20 +55,44 @@ function CredentialsModal({ provider, onClose, onSave, loading }) {
     "japaneast",
   ];
 
+  const getProviderTitle = () => {
+    switch (provider) {
+      case "aws":
+        return "🟠 Connect to AWS";
+      case "azure":
+        return "🔵 Connect to Azure";
+      case "gcp":
+        return "🟢 Connect to Google Cloud";
+      default:
+        return "Connect Credentials";
+    }
+  };
+
+  const getButtonClass = () => {
+    switch (provider) {
+      case "aws":
+        return "btn-aws";
+      case "azure":
+        return "btn-azure";
+      case "gcp":
+        return "btn-gcp";
+      default:
+        return "btn-primary";
+    }
+  };
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h3>
-            {provider === "aws" ? "🟠 Connect to AWS" : "🔵 Connect to Azure"}
-          </h3>
+          <h3>{getProviderTitle()}</h3>
           <button className="modal-close" onClick={onClose}>
             ×
           </button>
         </div>
 
         <form onSubmit={handleSubmit}>
-          {provider === "aws" ? (
+          {provider === "aws" && (
             <>
               <div className="form-group">
                 <label className="form-label">Access Key ID *</label>
@@ -106,7 +136,9 @@ function CredentialsModal({ provider, onClose, onSave, loading }) {
                 </select>
               </div>
             </>
-          ) : (
+          )}
+
+          {provider === "azure" && (
             <>
               <div className="form-group">
                 <label className="form-label">Tenant ID *</label>
@@ -190,6 +222,50 @@ function CredentialsModal({ provider, onClose, onSave, loading }) {
             </>
           )}
 
+          {provider === "gcp" && (
+            <>
+              <div className="form-group">
+                <label className="form-label">Project ID *</label>
+                <input
+                  type="text"
+                  name="projectId"
+                  className="form-input"
+                  placeholder="my-gcp-project-id"
+                  value={formData.projectId}
+                  onChange={handleChange}
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Client Email *</label>
+                <input
+                  type="email"
+                  name="clientEmail"
+                  className="form-input"
+                  placeholder="service-account@project.iam.gserviceaccount.com"
+                  value={formData.clientEmail}
+                  onChange={handleChange}
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Private Key *</label>
+                <textarea
+                  name="privateKey"
+                  className="form-input"
+                  placeholder="-----BEGIN PRIVATE KEY-----&#10;...&#10;-----END PRIVATE KEY-----"
+                  value={formData.privateKey}
+                  onChange={handleChange}
+                  required
+                  rows={5}
+                  style={{ fontFamily: "monospace", fontSize: "0.8rem" }}
+                />
+              </div>
+            </>
+          )}
+
           <div style={{ display: "flex", gap: "1rem", marginTop: "1.5rem" }}>
             <button
               type="button"
@@ -201,7 +277,7 @@ function CredentialsModal({ provider, onClose, onSave, loading }) {
             </button>
             <button
               type="submit"
-              className={`btn ${provider === "aws" ? "btn-aws" : "btn-azure"}`}
+              className={`btn ${getButtonClass()}`}
               disabled={loading}
               style={{ flex: 1 }}
             >

@@ -6,6 +6,8 @@ import {
 import { AWSProvider } from "../providers/aws-provider.js";
 import { AzureProvider } from "../providers/azure-provider.js";
 
+import { GCPProvider } from "../providers/gcp-provider.js";
+
 const router = express.Router();
 
 /**
@@ -63,6 +65,7 @@ router.post("/aws", async (req, res, next) => {
  * Configure Azure credentials
  */
 router.post("/azure", async (req, res, next) => {
+  // ... existing azure implementation
   try {
     const {
       tenantId,
@@ -121,6 +124,56 @@ router.post("/azure", async (req, res, next) => {
 });
 
 /**
+ * POST /api/credentials/gcp
+ * Configure GCP credentials
+ */
+router.post("/gcp", async (req, res, next) => {
+  try {
+    const { projectId, clientEmail, privateKey } = req.body;
+
+    if (!projectId || !clientEmail || !privateKey) {
+      return res.status(400).json({
+        error: "Missing required fields",
+        required: ["projectId", "clientEmail", "privateKey"],
+      });
+    }
+
+    const credentials = {
+      projectId,
+      clientEmail,
+      privateKey,
+    };
+
+    // Validate credentials
+    const provider = new GCPProvider(credentials);
+    const validation = await provider.validateCredentials();
+
+    if (!validation.valid) {
+      return res.status(401).json({
+        error: "Invalid GCP credentials",
+        details: validation.error,
+      });
+    }
+
+    // Store encrypted credentials in session
+    req.session.gcp_credentials = encryptCredentials(credentials);
+    req.session.gcp_project = projectId;
+    req.session.gcp_preconfigured = false;
+
+    res.json({
+      success: true,
+      message: "GCP credentials configured successfully",
+      account: {
+        projectId: validation.projectId,
+        buckets: validation.bucketsCount,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
  * GET /api/credentials/status
  * Check which providers are configured
  */
@@ -135,6 +188,11 @@ router.get("/status", (req, res) => {
       configured: !!req.session.azure_credentials,
       subscriptionId: req.session.azure_subscription || null,
       preconfigured: req.session.azure_preconfigured || false,
+    },
+    gcp: {
+      configured: !!req.session.gcp_credentials,
+      projectId: req.session.gcp_project || null,
+      preconfigured: req.session.gcp_preconfigured || false,
     },
   });
 });
@@ -154,9 +212,16 @@ router.delete("/:provider", (req, res) => {
     delete req.session.azure_credentials;
     delete req.session.azure_subscription;
     delete req.session.azure_preconfigured;
+  } else if (provider === "gcp") {
+    delete req.session.gcp_credentials;
+    delete req.session.gcp_project;
+    delete req.session.gcp_preconfigured;
   } else {
     return res.status(400).json({ error: "Invalid provider" });
   }
+
+  // Set flag to prevent auto-reloading from .env
+  req.session.manually_disconnected = true;
 
   res.json({
     success: true,

@@ -1,5 +1,12 @@
-import { createContext, useContext, useState, useEffect } from "react";
+import {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+} from "react";
 import api from "../services/api";
+import { useOrganization } from "./OrganizationContext";
 
 const DeploymentContext = createContext();
 
@@ -16,8 +23,11 @@ export function DeploymentProvider({ children }) {
   const [initialLoading, setInitialLoading] = useState(true);
   const [alert, setAlert] = useState(null);
 
+  // Get organization context - deployments should reload when org changes
+  const { currentOrg, isAdmin } = useOrganization();
+
   // Load initial data
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       const [status, resourceTypes, deploymentsData] = await Promise.all([
         api.getCredentialStatus(),
@@ -33,11 +43,12 @@ export function DeploymentProvider({ children }) {
     } finally {
       setInitialLoading(false);
     }
-  };
+  }, []);
 
+  // Reload deployments when organization changes
   useEffect(() => {
     loadData();
-  }, []);
+  }, [loadData, currentOrg?.id, isAdmin]);
 
   const showAlert = (type, message) => {
     setAlert({ type, message });

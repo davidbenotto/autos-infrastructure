@@ -58,7 +58,22 @@ function DeployModal({ provider, resource, onClose, onDeploy, loading }) {
         <form onSubmit={handleSubmit}>
           {(resource.options || []).map((option) => (
             <div key={option.name} className="form-group">
-              <label className="form-label">{formatLabel(option.name)}</label>
+              <label className="form-label">
+                {formatLabel(option.name)}
+                {/* Show cost for selected option if available */}
+                {option.costMap && options[option.name] && (
+                  <span
+                    style={{
+                      float: "right",
+                      fontSize: "0.8rem",
+                      color: "var(--primary)",
+                      fontWeight: 500,
+                    }}
+                  >
+                    {option.costMap[options[option.name]]}
+                  </span>
+                )}
+              </label>
 
               {option.type === "select" ? (
                 <select
@@ -69,6 +84,9 @@ function DeployModal({ provider, resource, onClose, onDeploy, loading }) {
                   {option.choices.map((choice) => (
                     <option key={choice} value={choice}>
                       {choice}
+                      {option.costMap?.[choice]
+                        ? ` (${option.costMap[choice]})`
+                        : ""}
                     </option>
                   ))}
                 </select>
@@ -83,6 +101,51 @@ function DeployModal({ provider, resource, onClose, onDeploy, loading }) {
               )}
             </div>
           ))}
+
+          {/* Cost Estimate Banner */}
+          {resource.cost && (
+            <div
+              style={{
+                marginTop: "1.5rem",
+                padding: "1rem",
+                background: "rgba(59, 130, 246, 0.1)",
+                borderRadius: "8px",
+                border: "1px solid rgba(59, 130, 246, 0.2)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.75rem",
+                }}
+              >
+                <span style={{ fontSize: "1.5rem" }}>💵</span>
+                <div>
+                  <div
+                    style={{
+                      fontWeight: "600",
+                      color: "var(--primary)",
+                      fontSize: "1rem",
+                    }}
+                  >
+                    Estimated Cost: {resource.cost.estimate}
+                  </div>
+                  {resource.cost.note && (
+                    <div
+                      style={{
+                        fontSize: "0.8rem",
+                        color: "var(--text-muted)",
+                        marginTop: "0.25rem",
+                      }}
+                    >
+                      {resource.cost.note}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="alert alert-warning" style={{ marginTop: "1.5rem" }}>
             <span style={{ fontSize: "1.25rem" }}>💰</span>

@@ -4,7 +4,7 @@ import {
   TerminateInstancesCommand,
   CreateVpcCommand,
   DeleteVpcCommand,
-  CreateSubnetCommand,
+  DescribeVpcsCommand,
 } from "@aws-sdk/client-ec2";
 import {
   S3Client,
@@ -37,6 +37,16 @@ import {
   CloudFrontClient,
   CreateDistributionCommand,
 } from "@aws-sdk/client-cloudfront";
+import {
+  Route53Client,
+  CreateHostedZoneCommand,
+  DeleteHostedZoneCommand,
+} from "@aws-sdk/client-route-53";
+import {
+  ElastiCacheClient,
+  CreateCacheClusterCommand,
+  DeleteCacheClusterCommand,
+} from "@aws-sdk/client-elasticache";
 import { STSClient, GetCallerIdentityCommand } from "@aws-sdk/client-sts";
 import { SSMClient, GetParameterCommand } from "@aws-sdk/client-ssm";
 import {
@@ -44,16 +54,17 @@ import {
   CreateServiceLinkedRoleCommand,
   GetRoleCommand,
 } from "@aws-sdk/client-iam";
-import { v4 as uuidv4 } from "uuid";
 import { AWSEC2Service } from "./aws/ec2-service.js";
 import { AWSS3Service } from "./aws/s3-service.js";
+import BaseProvider from "./base-provider.js";
 
 /**
  * AWS Cloud Provider - Handles all AWS resource deployments
  */
-export class AWSProvider {
+export class AWSProvider extends BaseProvider {
   constructor(credentials) {
-    this.credentials = credentials;
+    super(credentials, "AWS");
+
     this.config = {
       region: credentials.region || "us-east-1",
       credentials: {
@@ -67,26 +78,8 @@ export class AWSProvider {
   }
 
   /**
-   * Helper to handle AWS SDK errors
-   */
-  handleAWSError(error) {
-    if (
-      error.Code === "AccessDenied" ||
-      error.name === "AccessDeniedException"
-    ) {
-      return `AWS Authorization Failed: Your IAM user does not have permission to perform this action. Error: ${error.message}`;
-    }
-    if (error.Code === "AuthFailure" || error.name === "AuthFailure") {
-      return `AWS Authentication Failed: Check your Access Key ID and Secret Access Key.`;
-    }
-    if (error.Code === "UnauthorizedOperation") {
-      return `AWS Authorization Failed: Operation not authorized. Check your IAM policy.`;
-    }
-    return error.message;
-  }
-
-  /**
    * Validate AWS credentials
+
    */
   async validateCredentials() {
     try {
@@ -196,9 +189,9 @@ export class AWSProvider {
    */
   async deployRDS(options = {}) {
     const rdsClient = new RDSClient(this.config);
-    const deploymentId = uuidv4();
+    const deploymentId = this.generateDeploymentId();
     const dbIdentifier =
-      options.dbIdentifier || `auto-db-${deploymentId.slice(0, 8)}`;
+      options.dbIdentifier || `auto-db-${this.generateShortId()}`;
 
     try {
       const response = await rdsClient.send(
@@ -208,28 +201,24 @@ export class AWSProvider {
           Engine: options.engine || "mysql",
           MasterUsername: options.masterUsername || "admin",
           MasterUserPassword:
-            options.masterPassword || `AutoDeploy${deploymentId.slice(0, 8)}!`,
+            options.masterPassword || `AutoDeploy${this.generateShortId()}!`,
           AllocatedStorage: options.storage || 20,
-          Tags: [
-            { Key: "DeploymentId", Value: deploymentId },
-            { Key: "ManagedBy", Value: "cloud-auto-deploy" },
-          ],
+          Tags: this.formatTagsAWS(deploymentId),
         }),
       );
 
-      return {
-        success: true,
+      return this.successResponse(
         deploymentId,
-        resourceType: "rds",
-        resourceId: response.DBInstance.DBInstanceIdentifier,
-        details: {
+        "rds",
+        response.DBInstance.DBInstanceIdentifier,
+        {
           dbIdentifier: response.DBInstance.DBInstanceIdentifier,
           engine: response.DBInstance.Engine,
           instanceClass: response.DBInstance.DBInstanceClass,
         },
-      };
+      );
     } catch (error) {
-      return { success: false, deploymentId, error: error.message };
+      return this.errorResponse(deploymentId, error);
     }
   }
 
@@ -238,9 +227,9 @@ export class AWSProvider {
    */
   async deployLambda(options = {}) {
     const lambdaClient = new LambdaClient(this.config);
-    const deploymentId = uuidv4();
+    const deploymentId = this.generateDeploymentId();
     const functionName =
-      options.functionName || `auto-lambda-${deploymentId.slice(0, 8)}`;
+      options.functionName || `auto-lambda-${this.generateShortId()}`;
 
     try {
       // Create a simple hello world function
@@ -261,23 +250,22 @@ export class AWSProvider {
           Code: { ZipFile: Buffer.from(code, "base64") },
           MemorySize: parseInt(options.memory || 128),
           Timeout: parseInt(options.timeout || 30),
-          Tags: { DeploymentId: deploymentId, ManagedBy: "cloud-auto-deploy" },
+          Tags: this.createTags(deploymentId),
         }),
       );
 
-      return {
-        success: true,
+      return this.successResponse(
         deploymentId,
-        resourceType: "lambda",
-        resourceId: response.FunctionArn,
-        details: {
+        "lambda",
+        response.FunctionArn,
+        {
           functionName: response.FunctionName,
           runtime: response.Runtime,
           arn: response.FunctionArn,
         },
-      };
+      );
     } catch (error) {
-      return { success: false, deploymentId, error: error.message };
+      return this.errorResponse(deploymentId, error);
     }
   }
 
@@ -286,9 +274,9 @@ export class AWSProvider {
    */
   async deployECS(options = {}) {
     const ecsClient = new ECSClient(this.config);
-    const deploymentId = uuidv4();
+    const deploymentId = this.generateDeploymentId();
     const clusterName =
-      options.clusterName || `auto-ecs-${deploymentId.slice(0, 8)}`;
+      options.clusterName || `auto-ecs-${this.generateShortId()}`;
 
     try {
       // Ensure Service Linked Role exists before creating cluster
@@ -298,26 +286,22 @@ export class AWSProvider {
         new CreateClusterCommand({
           clusterName,
           capacityProviders: ["FARGATE", "FARGATE_SPOT"],
-          tags: [
-            { key: "DeploymentId", value: deploymentId },
-            { key: "ManagedBy", value: "cloud-auto-deploy" },
-          ],
+          tags: this.formatTagsAWS(deploymentId),
         }),
       );
 
-      return {
-        success: true,
+      return this.successResponse(
         deploymentId,
-        resourceType: "ecs",
-        resourceId: response.cluster.clusterArn,
-        details: {
+        "ecs",
+        response.cluster.clusterArn,
+        {
           clusterName: response.cluster.clusterName,
           clusterArn: response.cluster.clusterArn,
           status: response.cluster.status,
         },
-      };
+      );
     } catch (error) {
-      return { success: false, deploymentId, error: error.message };
+      return this.errorResponse(deploymentId, error);
     }
   }
 
@@ -326,9 +310,9 @@ export class AWSProvider {
    */
   async deployDynamoDB(options = {}) {
     const dynamoClient = new DynamoDBClient(this.config);
-    const deploymentId = uuidv4();
+    const deploymentId = this.generateDeploymentId();
     const tableName =
-      options.tableName || `auto-table-${deploymentId.slice(0, 8)}`;
+      options.tableName || `auto-table-${this.generateShortId()}`;
 
     try {
       const response = await dynamoClient.send(
@@ -337,26 +321,22 @@ export class AWSProvider {
           KeySchema: [{ AttributeName: "id", KeyType: "HASH" }],
           AttributeDefinitions: [{ AttributeName: "id", AttributeType: "S" }],
           BillingMode: "PAY_PER_REQUEST",
-          Tags: [
-            { Key: "DeploymentId", Value: deploymentId },
-            { Key: "ManagedBy", Value: "cloud-auto-deploy" },
-          ],
+          Tags: this.formatTagsAWS(deploymentId),
         }),
       );
 
-      return {
-        success: true,
+      return this.successResponse(
         deploymentId,
-        resourceType: "dynamodb",
-        resourceId: response.TableDescription.TableArn,
-        details: {
+        "dynamodb",
+        response.TableDescription.TableArn,
+        {
           tableName: response.TableDescription.TableName,
           tableArn: response.TableDescription.TableArn,
           status: response.TableDescription.TableStatus,
         },
-      };
+      );
     } catch (error) {
-      return { success: false, deploymentId, error: error.message };
+      return this.errorResponse(deploymentId, error);
     }
   }
 
@@ -365,15 +345,14 @@ export class AWSProvider {
    */
   async deployCloudFront(options = {}) {
     const cfClient = new CloudFrontClient(this.config);
-    const deploymentId = uuidv4();
+    const deploymentId = this.generateDeploymentId();
 
     try {
       const response = await cfClient.send(
         new CreateDistributionCommand({
           DistributionConfig: {
             CallerReference: deploymentId,
-            Comment:
-              options.comment || `Auto Deploy ${deploymentId.slice(0, 8)}`,
+            Comment: options.comment || `Auto Deploy ${this.generateShortId()}`,
             Enabled: true,
             Origins: {
               Quantity: 1,
@@ -400,19 +379,90 @@ export class AWSProvider {
         }),
       );
 
-      return {
-        success: true,
+      return this.successResponse(
         deploymentId,
-        resourceType: "cloudfront",
-        resourceId: response.Distribution.Id,
-        details: {
+        "cloudfront",
+        response.Distribution.Id,
+        {
           distributionId: response.Distribution.Id,
           domainName: response.Distribution.DomainName,
           status: response.Distribution.Status,
         },
-      };
+      );
     } catch (error) {
-      return { success: false, deploymentId, error: error.message };
+      return this.errorResponse(deploymentId, error);
+    }
+  }
+
+  /**
+   * Deploy Route53 Hosted Zone
+   */
+  async deployRoute53(options = {}) {
+    const route53Client = new Route53Client(this.config);
+    const deploymentId = this.generateDeploymentId();
+    const domainName =
+      options.domainName || `example-${this.generateShortId()}.com`;
+
+    try {
+      const response = await route53Client.send(
+        new CreateHostedZoneCommand({
+          Name: domainName,
+          CallerReference: deploymentId,
+          HostedZoneConfig: {
+            Comment: "Managed by Cloud Auto Deploy",
+            PrivateZone: false,
+          },
+        }),
+      );
+
+      return this.successResponse(
+        deploymentId,
+        "route53",
+        response.HostedZone.Id,
+        {
+          hostedZoneId: response.HostedZone.Id,
+          domainName: response.HostedZone.Name,
+          nameServers: response.DelegationSet.NameServers,
+        },
+      );
+    } catch (error) {
+      return this.errorResponse(deploymentId, error);
+    }
+  }
+
+  /**
+   * Deploy ElastiCache Redis Cluster
+   */
+  async deployElastiCache(options = {}) {
+    const elastiCacheClient = new ElastiCacheClient(this.config);
+    const deploymentId = this.generateDeploymentId();
+    const clusterId =
+      options.clusterId || `auto-redis-${this.generateShortId()}`;
+
+    try {
+      const response = await elastiCacheClient.send(
+        new CreateCacheClusterCommand({
+          CacheClusterId: clusterId,
+          Engine: "redis",
+          CacheNodeType: options.nodeType || "cache.t2.micro",
+          NumCacheNodes: 1,
+          Tags: this.formatTagsAWS(deploymentId),
+        }),
+      );
+
+      return this.successResponse(
+        deploymentId,
+        "elasticache",
+        response.CacheCluster.CacheClusterId,
+        {
+          clusterId: response.CacheCluster.CacheClusterId,
+          engine: response.CacheCluster.Engine,
+          status: response.CacheCluster.CacheClusterStatus,
+          endpoint: response.CacheCluster.ConfigurationEndpoint?.Address,
+        },
+      );
+    } catch (error) {
+      return this.errorResponse(deploymentId, error);
     }
   }
 
@@ -498,6 +548,7 @@ export class AWSProvider {
         category: "Compute",
         description: "Virtual machine in AWS",
         icon: "🖥️",
+        cost: { estimate: "~$8-35/month", note: "Varies by instance type" },
         options: [
           {
             name: "osImage",
@@ -516,6 +567,13 @@ export class AWSProvider {
               "t3.micro",
               "t3.small",
             ],
+            costMap: {
+              "t2.micro": "~$8/month",
+              "t2.small": "~$17/month",
+              "t2.medium": "~$34/month",
+              "t3.micro": "~$8/month",
+              "t3.small": "~$15/month",
+            },
           },
           {
             name: "name",
@@ -531,6 +589,7 @@ export class AWSProvider {
         category: "Compute",
         description: "Serverless compute service",
         icon: "λ",
+        cost: { estimate: "Pay per use", note: "~$0.20 per 1M requests" },
         options: [
           {
             name: "functionName",
@@ -558,6 +617,7 @@ export class AWSProvider {
         category: "Compute",
         description: "Container orchestration cluster",
         icon: "🐳",
+        cost: { estimate: "~$25-50/month", note: "Depends on vCPU/memory" },
         options: [
           {
             name: "clusterName",
@@ -574,6 +634,7 @@ export class AWSProvider {
         category: "Storage",
         description: "Object storage bucket",
         icon: "🪣",
+        cost: { estimate: "Pay per use", note: "~$0.023/GB stored" },
         options: [
           {
             name: "bucketName",
@@ -589,6 +650,7 @@ export class AWSProvider {
         category: "Storage",
         description: "NoSQL database table",
         icon: "📊",
+        cost: { estimate: "Pay per use", note: "On-demand pricing" },
         options: [
           {
             name: "tableName",
@@ -605,6 +667,7 @@ export class AWSProvider {
         category: "Database",
         description: "Managed relational database",
         icon: "🗄️",
+        cost: { estimate: "~$12-50/month", note: "Varies by instance class" },
         options: [
           {
             name: "engine",
@@ -661,6 +724,42 @@ export class AWSProvider {
             type: "text",
             default: "",
             placeholder: "Distribution comment",
+          },
+        ],
+      },
+      {
+        id: "route53",
+        name: "Route 53",
+        category: "Networking",
+        description: "DNS Hosted Zone",
+        icon: "🧭",
+        options: [
+          {
+            name: "domainName",
+            type: "text",
+            default: "",
+            placeholder: "example.com",
+          },
+        ],
+      },
+      {
+        id: "elasticache",
+        name: "ElastiCache Redis",
+        category: "Database",
+        description: "Managed Redis cluster",
+        icon: "🧠",
+        options: [
+          {
+            name: "clusterId",
+            type: "text",
+            default: "",
+            placeholder: "Cluster ID",
+          },
+          {
+            name: "nodeType",
+            type: "select",
+            default: "cache.t2.micro",
+            choices: ["cache.t2.micro", "cache.t3.micro"],
           },
         ],
       },

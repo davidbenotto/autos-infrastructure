@@ -126,6 +126,7 @@ router.post("/deploy", async (req, res, next) => {
 
     // Store deployment in database
     try {
+      const { orgId } = req.orgContext || {};
       await db.createDeployment({
         deploymentId: result.deploymentId,
         provider,
@@ -135,6 +136,7 @@ router.post("/deploy", async (req, res, next) => {
         status: result.success ? "active" : "failed",
         options: validOptions || {},
         details: result.details || {},
+        organization_id: orgId || "00000000-0000-0000-0000-000000000000",
       });
     } catch (dbError) {
       logger.error("Database error:", dbError);
@@ -152,7 +154,14 @@ router.post("/deploy", async (req, res, next) => {
 router.get("/", async (req, res) => {
   try {
     const { provider } = req.query;
-    const deployments = await db.getAllDeployments(provider);
+    const { orgId, isAdmin } = req.orgContext || {};
+
+    // Use org-filtered query if not admin mode
+    const deployments = await db.getDeploymentsByOrg(
+      isAdmin ? null : orgId,
+      provider,
+    );
+
     res.json({
       count: deployments.length,
       deployments: deployments.map((d) => ({
@@ -165,6 +174,7 @@ router.get("/", async (req, res) => {
         details: d.details,
         createdAt: d.created_at,
         destroyedAt: d.destroyed_at,
+        organizationId: d.organization_id,
       })),
     });
   } catch (error) {

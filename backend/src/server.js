@@ -4,17 +4,41 @@ import helmet from "helmet";
 import session from "express-session";
 import RedisStore from "connect-redis";
 import Redis from "ioredis";
+import rateLimit from "express-rate-limit";
 import dotenv from "dotenv";
 import deploymentRoutes from "./routes/deployment-routes.js";
 import credentialRoutes from "./routes/credential-routes.js";
+import organizationRoutes from "./routes/organization-routes.js";
 import { encryptCredentials } from "./services/encryption-service.js";
 import { db } from "./services/database-service.js";
 import logger from "./utils/logger.js";
 
+// Rate limiter for deployment endpoint (prevents abuse)
+const deployRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 30, // limit each IP to 30 deployments per window
+  message: { error: "Too many deployment requests. Please try again later." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// General API rate limiter
+const apiRateLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 100, // 100 requests per minute
+  message: { error: "Too many requests. Please slow down." },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 dotenv.config();
 
+// Validate environment variables at startup
+import validateEnv from "./utils/validate-env.js";
+const env = validateEnv();
+
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = env.PORT;
 
 // Redis client for sessions
 let redisClient;
@@ -64,9 +88,16 @@ app.use(
 
 // Auto-load pre-configured credentials middleware
 app.use((req, res, next) => {
-  if (process.env.USE_PRECONFIGURED_CREDENTIALS === "true") {
+  if (
+    process.env.USE_PRECONFIGURED_CREDENTIALS === "true" &&
+    !req.session.manually_disconnected
+  ) {
     // Auto-inject AWS credentials if configured
-    if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
+    if (
+      process.env.AWS_ACCESS_KEY_ID &&
+      process.env.AWS_SECRET_ACCESS_KEY &&
+      !req.session.aws_credentials
+    ) {
       const awsCredentials = {
         accessKeyId: process.env.AWS_ACCESS_KEY_ID,
         secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
@@ -78,7 +109,11 @@ app.use((req, res, next) => {
     }
 
     // Auto-inject Azure credentials if configured
-    if (process.env.AZURE_CLIENT_ID && process.env.AZURE_CLIENT_SECRET) {
+    if (
+      process.env.AZURE_CLIENT_ID &&
+      process.env.AZURE_CLIENT_SECRET &&
+      !req.session.azure_credentials
+    ) {
       const azureCredentials = {
         tenantId: process.env.AZURE_TENANT_ID,
         clientId: process.env.AZURE_CLIENT_ID,
@@ -92,12 +127,42 @@ app.use((req, res, next) => {
         process.env.AZURE_SUBSCRIPTION_ID || "preconfigured";
       req.session.azure_preconfigured = true;
     }
+
+    // Auto-inject GCP credentials if configured
+    if (
+      process.env.GCP_PROJECT_ID &&
+      process.env.GCP_CLIENT_EMAIL &&
+      !req.session.gcp_credentials
+    ) {
+      const gcpCredentials = {
+        projectId: process.env.GCP_PROJECT_ID,
+        clientEmail: process.env.GCP_CLIENT_EMAIL,
+        privateKey: process.env.GCP_PRIVATE_KEY
+          ? process.env.GCP_PRIVATE_KEY.replace(/\\n/g, "\n")
+          : "",
+      };
+      req.session.gcp_credentials = encryptCredentials(gcpCredentials);
+      req.session.gcp_project = process.env.GCP_PROJECT_ID;
+      req.session.gcp_preconfigured = true;
+    }
   }
   next();
 });
 
-// API Routes
+// Organization context middleware - extract org ID from headers
+app.use((req, res, next) => {
+  req.orgContext = {
+    orgId: req.headers["x-organization-id"] || null,
+    isAdmin: req.headers["x-admin-mode"] === "true",
+  };
+  next();
+});
+
+// API Routes with rate limiting
+app.use("/api", apiRateLimiter);
+app.use("/api/organizations", organizationRoutes);
 app.use("/api/credentials", credentialRoutes);
+app.use("/api/deployments/deploy", deployRateLimiter); // Stricter limits for deployments
 app.use("/api/deployments", deploymentRoutes);
 
 // Health check with database status

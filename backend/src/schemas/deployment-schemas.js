@@ -28,15 +28,28 @@ export const storageSchema = baseOptionSchema.extend({
   versioning: z.boolean().optional(),
 });
 
-// RDS/SQL Schema
+// Aurora/RDS Schema
 export const databaseSchema = baseOptionSchema.extend({
   engine: z.string().optional(),
   size: z.string().optional(),
 });
 
+// GCP Schemas
+export const gceSchema = baseOptionSchema.extend({
+  machineType: z
+    .enum(["e2-micro", "e2-small", "e2-medium"])
+    .default("e2-micro"),
+  zone: z.string().default("us-central1-a"),
+});
+
+export const gcsSchema = baseOptionSchema.extend({
+  bucketName: z.string().min(3).optional(),
+  location: z.enum(["US", "EU", "ASIA"]).default("US"),
+});
+
 // Main Deployment Request Schema
 export const deploymentRequestSchema = z.object({
-  provider: z.enum(["aws", "azure"]),
+  provider: z.enum(["aws", "azure", "gcp"]),
   resourceType: z.string(),
   options: z.object({}).passthrough(), // validation will happen inside based on type
 });
@@ -47,9 +60,12 @@ export const getValidationSchema = (resourceType) => {
       return ec2Schema;
     case "vm":
       return azureVmSchema;
+    case "gce":
+      return gceSchema;
     case "s3":
     case "storage":
-      return storageSchema;
+    case "gcs":
+      return storageSchema; // Reuse storage schema or distinct if needed
     case "rds":
     case "sql":
       return databaseSchema;

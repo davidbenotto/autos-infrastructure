@@ -1,0 +1,46 @@
+{
+  "deployments": [
+    {
+      "deployment_id": "2507c606-4e1d-4515-a187-14d7fe8cc7d5",
+      "provider": "azure",
+      "resource_type": "storage",
+      "resource_id": "/subscriptions/2e8abbc1-d3fd-4722-ae41-5be85abf8429/resourceGroups/cloud-portal-rg/providers/Microsoft.Storage/storageAccounts/metasploit0126",
+      "resource_name": "metasploit0126",
+      "status": "destroyed",
+      "options": {
+        "name": "metasploit0126"
+      },
+      "details": {
+        "name": "metasploit0126",
+        "location": "francecentral",
+        "sku": "Standard_LRS"
+      },
+      "created_at": "2026-01-26T19:00:53.778Z",
+      "updated_at": "2026-01-26T19:20:38.935Z",
+      "destroyed_at": "2026-01-26T19:20:38.935Z",
+      "organization_id": "00000000-0000-0000-0000-000000000000"
+    }
+  ],
+  "deployment_logs": [],
+  "terraform_states": [],
+  "organizations": [
+    {
+      "id": "00000000-0000-0000-0000-000000000000",
+      "name": "Default",
+      "slug": "default",
+      "description": "Default organization for unassigned deployments",
+      "is_active": true,
+      "created_at": "2026-01-27T19:37:32.170Z",
+      "updated_at": "2026-01-27T19:37:32.171Z"
+    },
+    {
+      "id": "f817d939-4b51-4a40-9f76-97dfc24fe3e0",
+      "name": "Test Org",
+      "slug": "test-org",
+      "description": null,
+      "is_active": true,
+      "created_at": "2026-01-27T20:02:11.838Z",
+      "updated_at": "2026-01-27T20:02:11.838Z"
+    }
+  ]
+}

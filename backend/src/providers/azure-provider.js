@@ -2,6 +2,7 @@ import { ClientSecretCredential } from "@azure/identity";
 import { ComputeManagementClient } from "@azure/arm-compute";
 import { StorageManagementClient } from "@azure/arm-storage";
 import { NetworkManagementClient } from "@azure/arm-network";
+import { DnsManagementClient } from "@azure/arm-dns";
 import { SqlManagementClient } from "@azure/arm-sql";
 import { WebSiteManagementClient } from "@azure/arm-appservice";
 import { ContainerInstanceManagementClient } from "@azure/arm-containerinstance";
@@ -611,23 +612,78 @@ export class AzureProvider {
    * Deploy Azure CDN profile
    */
   async deployCDN(options = {}) {
-    const cdnClient = new CdnManagementClient(
+    // ... existing implementation
+  }
+
+  /**
+   * Deploy Azure Load Balancer
+   */
+  async deployLoadBalancer(options = {}) {
+    const networkClient = new NetworkManagementClient(
       this.credential,
       this.subscriptionId,
     );
     const deploymentId = uuidv4();
-    const profileName = options.name || `auto-cdn-${deploymentId.slice(0, 8)}`;
+    const lbName = options.name || `auto-lb-${deploymentId.slice(0, 8)}`;
+    const frontendIPName = `${lbName}-fe`;
 
     try {
-      // Ensure resource group exists
       await this.ensureResourceGroup();
 
-      const profile = await cdnClient.profiles.beginCreateAndWait(
+      // Create Public IP for LB
+      const pip =
+        await networkClient.publicIPAddresses.beginCreateOrUpdateAndWait(
+          this.resourceGroup,
+          `${lbName}-pip`,
+          {
+            location: this.location,
+            publicIPAllocationMethod: "Static",
+            sku: { name: "Standard" },
+          },
+        );
+
+      const lb = await networkClient.loadBalancers.beginCreateOrUpdateAndWait(
         this.resourceGroup,
-        profileName,
+        lbName,
         {
-          location: "global",
-          sku: { name: options.sku || "Standard_Microsoft" },
+          location: this.location,
+          sku: { name: "Standard" },
+          frontendIPConfigurations: [
+            {
+              name: frontendIPName,
+              publicIPAddress: { id: pip.id },
+            },
+          ],
+          backendAddressPools: [{ name: "BackendPool1" }],
+          probes: [
+            {
+              name: "HealthProbe",
+              protocol: "Tcp",
+              port: 80,
+              intervalInSeconds: 15,
+              numberOfProbes: 2,
+            },
+          ],
+          loadBalancingRules: [
+            {
+              name: "HTTPRule",
+              protocol: "Tcp",
+              frontendPort: 80,
+              backendPort: 80,
+              idleTimeoutInMinutes: 4,
+              enableFloatingIP: false,
+              loadDistribution: "Default",
+              frontendIPConfiguration: {
+                id: `/subscriptions/${this.subscriptionId}/resourceGroups/${this.resourceGroup}/providers/Microsoft.Network/loadBalancers/${lbName}/frontendIPConfigurations/${frontendIPName}`,
+              },
+              backendAddressPool: {
+                id: `/subscriptions/${this.subscriptionId}/resourceGroups/${this.resourceGroup}/providers/Microsoft.Network/loadBalancers/${lbName}/backendAddressPools/BackendPool1`,
+              },
+              probe: {
+                id: `/subscriptions/${this.subscriptionId}/resourceGroups/${this.resourceGroup}/providers/Microsoft.Network/loadBalancers/${lbName}/probes/HealthProbe`,
+              },
+            },
+          ],
           tags: { DeploymentId: deploymentId, ManagedBy: "cloud-auto-deploy" },
         },
       );
@@ -635,9 +691,52 @@ export class AzureProvider {
       return {
         success: true,
         deploymentId,
-        resourceType: "cdn",
-        resourceId: profile.id,
-        details: { name: profile.name, sku: profile.sku.name },
+        resourceType: "loadbalancer",
+        resourceId: lb.id,
+        details: {
+          name: lb.name,
+          publicIP: pip.ipAddress,
+          sku: lb.sku.name,
+        },
+      };
+    } catch (error) {
+      return { success: false, deploymentId, error: error.message };
+    }
+  }
+
+  /**
+   * Deploy Azure DNS Zone
+   */
+  async deployDNS(options = {}) {
+    const dnsClient = new DnsManagementClient(
+      this.credential,
+      this.subscriptionId,
+    );
+    const deploymentId = uuidv4();
+    const zoneName = options.domainName || "example.com";
+
+    try {
+      await this.ensureResourceGroup();
+
+      const zone = await dnsClient.zones.createOrUpdate(
+        this.resourceGroup,
+        zoneName,
+        {
+          location: "Global",
+          tags: { DeploymentId: deploymentId, ManagedBy: "cloud-auto-deploy" },
+        },
+      );
+
+      return {
+        success: true,
+        deploymentId,
+        resourceType: "dns",
+        resourceId: zone.id,
+        details: {
+          name: zone.name,
+          nameServers: zone.nameServers,
+          numberOfRecordSets: zone.numberOfRecordSets,
+        },
       };
     } catch (error) {
       return { success: false, deploymentId, error: error.message };
@@ -1003,6 +1102,36 @@ export class AzureProvider {
               "Standard_Akamai",
               "Standard_Verizon",
             ],
+          },
+        ],
+      },
+      {
+        id: "loadbalancer",
+        name: "Load Balancer",
+        category: "Networking",
+        description: "Distribution of traffic",
+        icon: "⚖️",
+        options: [
+          {
+            name: "name",
+            type: "text",
+            default: "",
+            placeholder: "Load Balancer Name",
+          },
+        ],
+      },
+      {
+        id: "dns",
+        name: "DNS Zone",
+        category: "Networking",
+        description: "Hosting for DNS domains",
+        icon: "🌐",
+        options: [
+          {
+            name: "domainName",
+            type: "text",
+            default: "",
+            placeholder: "example.com",
           },
         ],
       },
