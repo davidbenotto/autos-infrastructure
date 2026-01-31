@@ -196,31 +196,71 @@ export class AzureProvider {
           content: `Username: azureuser\nPassword: ${adminPassword}\nIP: ${pip.ipAddress || "dynamic"}`,
         };
       } else {
-        // Linux: Generate SSH Key
-        const { generateKeyPairSync } = await import("crypto");
-        const { publicKey, privateKey } = generateKeyPairSync("rsa", {
-          modulusLength: 2048,
-          publicKeyEncoding: { type: "pkcs1", format: "pem" },
-          privateKeyEncoding: { type: "pkcs1", format: "pem" },
-        });
+        // Linux: Check for static SSH key configuration
+        if (process.env.USE_STATIC_SSH_KEY === "true") {
+          if (!process.env.SSH_PUBLIC_KEY_PATH) {
+            throw new Error(
+              "Static SSH key usage is enabled (USE_STATIC_SSH_KEY=true) but SSH_PUBLIC_KEY_PATH is missing. Cannot proceed.",
+            );
+          }
 
-        linuxConfiguration = {
-          disablePasswordAuthentication: true,
-          ssh: {
-            publicKeys: [
-              {
-                path: `/home/azureuser/.ssh/authorized_keys`,
-                keyData: publicKey,
+          try {
+            const fs = await import("fs");
+            const publicKey = fs.readFileSync(
+              process.env.SSH_PUBLIC_KEY_PATH,
+              "utf-8",
+            );
+
+            linuxConfiguration = {
+              disablePasswordAuthentication: true,
+              ssh: {
+                publicKeys: [
+                  {
+                    path: `/home/azureuser/.ssh/authorized_keys`,
+                    keyData: publicKey,
+                  },
+                ],
               },
-            ],
-          },
-        };
+            };
 
-        credentials = {
-          type: "pem",
-          filename: `${vmName}-key.pem`,
-          content: privateKey,
-        };
+            credentials = {
+              type: "text",
+              filename: "connect-instructions.txt",
+              content: `Connect using your local SSH key:\nssh -i ${process.env.SSH_PUBLIC_KEY_PATH.replace(".pub", "")} azureuser@<PUBLIC_IP>\n\n(Wait for instance to initialize and get a public IP)`,
+            };
+          } catch (err) {
+            // STRICT MODE: Throw error instead of fallback
+            throw new Error(
+              `Failed to read static SSH key from ${process.env.SSH_PUBLIC_KEY_PATH}: ${err.message}. New key generation is disabled.`,
+            );
+          }
+        } else {
+          // Fallback to generated key ONLY if static key is NOT enabled
+          const { generateKeyPairSync } = await import("crypto");
+          const { publicKey, privateKey } = generateKeyPairSync("rsa", {
+            modulusLength: 2048,
+            publicKeyEncoding: { type: "pkcs1", format: "pem" },
+            privateKeyEncoding: { type: "pkcs1", format: "pem" },
+          });
+
+          linuxConfiguration = {
+            disablePasswordAuthentication: true,
+            ssh: {
+              publicKeys: [
+                {
+                  path: `/home/azureuser/.ssh/authorized_keys`,
+                  keyData: publicKey,
+                },
+              ],
+            },
+          };
+
+          credentials = {
+            type: "pem",
+            filename: `${vmName}-key.pem`,
+            content: privateKey,
+          };
+        }
       }
 
       // Create VM

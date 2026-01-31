@@ -61,18 +61,31 @@ export class AWSEC2Service {
     const deploymentId = uuidv4();
     const imageId = await this.getLatestAmi(options.osImage);
 
-    // Generate a unique key pair for this deployment
-    const keyName = `key-${deploymentId}`;
+    // Check for static SSH key configuration
+    const useStaticKey = process.env.USE_STATIC_SSH_KEY === "true";
+    let keyName;
     let keyMaterial = null;
 
-    try {
-      const keyPair = await this.ec2Client.send(
-        new CreateKeyPairCommand({ KeyName: keyName }),
-      );
-      keyMaterial = keyPair.KeyMaterial;
-    } catch (error) {
-      console.warn("Failed to create key pair:", error);
-      // Proceed without key if failed (fallback to no-key access or existing mechanisms)
+    if (useStaticKey) {
+      if (!process.env.AWS_KEY_PAIR_NAME) {
+        throw new Error(
+          "Static SSH key usage is enabled (USE_STATIC_SSH_KEY=true) but AWS_KEY_PAIR_NAME is missing. Cannot proceed with deployment as new key generation is disabled.",
+        );
+      }
+      keyName = process.env.AWS_KEY_PAIR_NAME;
+      // We assume the key is already imported to AWS
+    } else {
+      // Generate a unique key pair for this deployment
+      keyName = `key-${deploymentId}`;
+      try {
+        const keyPair = await this.ec2Client.send(
+          new CreateKeyPairCommand({ KeyName: keyName }),
+        );
+        keyMaterial = keyPair.KeyMaterial;
+      } catch (error) {
+        console.warn("Failed to create key pair:", error);
+        // Proceed without key if failed
+      }
     }
 
     const params = {
@@ -80,7 +93,7 @@ export class AWSEC2Service {
       InstanceType: options.instanceType || "t2.micro",
       MinCount: 1,
       MaxCount: 1,
-      KeyName: keyName, // Associate the generated key
+      KeyName: keyName, // Associate the key
       TagSpecifications: [
         {
           ResourceType: "instance",
@@ -122,6 +135,12 @@ export class AWSEC2Service {
           type: "pem",
           filename: `${options.name || "ec2"}-${deploymentId.slice(0, 4)}.pem`,
           content: keyMaterial,
+        };
+      } else if (useStaticKey) {
+        result.credentials = {
+          type: "text",
+          filename: "connect-instructions.txt",
+          content: `Connect using your local SSH key:\nssh -i ${process.env.SSH_PUBLIC_KEY_PATH.replace(".pub", "")} ubuntu@<PUBLIC_IP>\n\n(Wait for instance to initialize and get a public IP)`,
         };
       }
 
