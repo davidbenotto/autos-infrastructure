@@ -9,108 +9,66 @@
 ![License](https://img.shields.io/badge/license-MIT-purple.svg?style=flat-square)
 
 **Democratizing Cloud Infrastructure with One-Click Deployments.**
-A unified portal for deploying secure, compliant resources across AWS and Azure without writing a single line of Terraform.
-
-[Features](#-features) • [Quick Start](#-quick-start) • [Architecture](#-architecture)
 
 </div>
 
 ---
 
-## 🎯 Mission
+## 🎯 Project Goals
 
-To bridge the gap between complex Infrastructure as Code (IaC) and developer autonomy. This portal provides a **Self-Service Interface** for teams to spin up standardized resources (VMs, Databases, Serverless Functions) instantly.
-
----
-
-## ✨ Key Features
-
-### 🚀 Unified Cloud Dashboard
-
-- **AWS & Azure Support**: Deploy to multiple clouds from a single pane of glass.
-- **Catalog of 20+ Resources**: Pre-configured templates for EC2, S3, RDS, Azure VMs, CosmosDB, and more.
-- **Zero-Touch Provisioning**: Automatic handling of VPCs, Subnets, and Security Groups behind the scenes.
-
-### ⚡ Developer Experience
-
-- **One-Click Deploy**: Select a resource, configure basic parameters, and launch.
-- **Instant Access**: SSH keys and connection strings are generated and securely delivered immediately.
-- **No Terraform Knowledge Required**: We handle the state and complexity; you get the infrastructure.
-
-### 🛡️ Enterprise Grade
-
-- **Secure Backend**: Credentials encrypted at rest using industry-standard AES-256.
-- **Validation**: Active pre-flight checks ensure cloud credentials are valid before deployment begins.
-- **Modern Stack**: Built with React (Vite), Node.js, and Terraform.
+1.  **Democratize Infrastructure**: Remove the steep learning curve of Terraform and Cloud Consoles. Allow any developer to provision production-grade resources.
+2.  **Accelerate R&D**: Reduce the time to spin up proof-of-concept environments from hours to seconds.
+3.  **Standardize Patterns**: Enforce infrastructure best practices (tagging, security groups, encryption) automatically via pre-defined templates.
+4.  **Hybrid Cloud Competency**: Provide a consistent learning and operational platform for both AWS and Azure.
 
 ---
 
 ## 🏗️ Architecture
 
-The system abstracts the complexity of cloud APIs and Terraform state management.
+The system abstracts the complexity of cloud APIs and Terraform state management behind a user-friendly API.
 
 ```mermaid
 graph TD
     User[Developer] -->|Click Deploy| UI[React Frontend]
     UI -->|API Request| API[Node.js API]
-    API -->|Decrypt Creds| Vault[Secure Storage]
-    API -->|Execute| TF[Terraform Engine]
-    TF -->|Provision| AWS[AWS Cloud]
-    TF -->|Provision| Azure[Azure Cloud]
+
+    subgraph "Backend Core"
+        API -->|Decrypt Creds| Vault[Secure Storage]
+        API -->|Generate tfvars| TemplateEng[Template Engine]
+    end
+
+    subgraph "Execution Layer"
+        TemplateEng -->|Execute| TF[Terraform Engine]
+        TF -->|Apply| AWS[AWS Cloud]
+        TF -->|Apply| Azure[Azure Cloud]
+    end
 ```
 
----
+### Design Principles
 
-## 🚀 Quick Start
-
-### Prerequisites
-
-- Node.js 18+
-- Docker (optional for containerized run)
-- Terraform CLI (if running locally without Docker)
-
-### Local Setup
-
-1.  **Backend Setup**
-
-    ```bash
-    cd backend
-    cp .env.example .env
-    npm install
-    npm run dev
-    ```
-
-2.  **Frontend Setup**
-
-    ```bash
-    cd frontend
-    npm install
-    npm run dev
-    ```
-
-3.  Access the portal at `http://localhost:5173`
+- **Stateless Operation**: The portal acts as a pass-through orchestrator, leveraging Terraform for state management.
+- **Secure Handling**: Credentials are never exposed to the client side after entry; they are encrypted and stored in the secure vault.
+- **Modular Templates**: Each resource is defined as an independent Terraform module, allowing individual versioning and updates.
 
 ---
 
-## 📦 Supported Catalog
+## ✨ Features
 
-| Category      | AWS Resources                  | Azure Resources                              |
-| :------------ | :----------------------------- | :------------------------------------------- |
-| **Compute**   | EC2 Instances, Lambda, ECS     | Virtual Machines, Function Apps, App Service |
-| **Storage**   | S3 Buckets, EBS                | Storage Accounts, Blob Storage               |
-| **Database**  | RDS (Postgres/MySQL), DynamoDB | SQL Database, CosmosDB                       |
-| **Messaging** | SNS, SQS                       | Service Bus                                  |
-| **Network**   | VPC, CloudFront                | Virtual Networks, CDN                        |
+- **Unified Cloud Dashboard**: Deploy to AWS & Azure from a single pane of glass.
+- **Catalog of 20+ Resources**: Pre-configured templates for EC2, S3, RDS, Azure VMs, CosmosDB, and more.
+- **Zero-Touch Provisioning**: Automatic handling of networking (VPC/VNet) and security.
+- **Instant Access**: SSH keys and connection strings generated and delivered instantly.
 
 ---
 
-## 📚 For Developers
+## 🛠 Tech Stack
 
-This project serves as a comprehensive reference for:
-
-- **Full-Stack Cloud Integration**: Connecting React to AWS/Azure SDKs.
-- **Terraform Automation**: patterns for programmatic Terraform execution.
-- **Secure Systems Design**: Handling sensitive cloud credentials in a web app.
+| Layer        | Technology                     |
+| :----------- | :----------------------------- |
+| **Frontend** | React 18, Vite 5, Tailwind CSS |
+| **Backend**  | Node.js 18+, Express.js        |
+| **IaC**      | Terraform                      |
+| **Database** | PostgreSQL 16                  |
 
 ---
 
