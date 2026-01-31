@@ -24,7 +24,7 @@ export class AzureProvider {
       credentials.clientSecret,
     );
     this.subscriptionId = credentials.subscriptionId;
-    this.resourceGroup = credentials.resourceGroup || "cloud-portal-rg";
+    this.resourceGroup = credentials.resourceGroup || "labs-rg";
     this.location = credentials.location || "eastus";
     this._resourceGroupCreated = false;
   }
@@ -118,6 +118,11 @@ export class AzureProvider {
     );
     const deploymentId = uuidv4();
     const vmName = options.name || `auto-vm-${deploymentId.slice(0, 8)}`;
+
+    // Allow Override Resource Group
+    if (options.resourceGroup) {
+      this.resourceGroup = options.resourceGroup;
+    }
 
     try {
       // Ensure resource group exists
@@ -336,6 +341,7 @@ export class AzureProvider {
           location: this.location,
           sku: { name: options.sku || "Standard_LRS" },
           kind: "StorageV2",
+          accessTier: options.accessTier || "Hot",
           tags: { DeploymentId: deploymentId, ManagedBy: "cloud-auto-deploy" },
         },
       );
@@ -435,15 +441,25 @@ export class AzureProvider {
       );
 
       // Create Database
+      const dbParams = {
+        location: this.location,
+        sku: { name: options.sku || "Basic", tier: "Basic" },
+        tags: { DeploymentId: deploymentId },
+      };
+
+      if (options.maxSizeGB) {
+        dbParams.maxSizeBytes =
+          parseInt(options.maxSizeGB) * 1024 * 1024 * 1024;
+      }
+      if (options.collation) {
+        dbParams.collation = options.collation;
+      }
+
       const db = await sqlClient.databases.beginCreateOrUpdateAndWait(
         this.resourceGroup,
         serverName,
         dbName,
-        {
-          location: this.location,
-          sku: { name: options.sku || "Basic", tier: "Basic" },
-          tags: { DeploymentId: deploymentId },
-        },
+        dbParams,
       );
 
       return {
@@ -578,6 +594,7 @@ export class AzureProvider {
             ipAddress: {
               type: "Public",
               ports: [{ protocol: "TCP", port: 80 }],
+              dnsNameLabel: options.dnsLabel || undefined,
             },
             tags: {
               DeploymentId: deploymentId,
@@ -795,6 +812,11 @@ export class AzureProvider {
     const appName = options.name || `auto-app-${deploymentId.slice(0, 8)}`;
     const planName = `${appName}-plan`;
 
+    // Allow Override Resource Group
+    if (options.resourceGroup) {
+      this.resourceGroup = options.resourceGroup;
+    }
+
     try {
       // Ensure resource group exists
       await this.ensureResourceGroup();
@@ -833,6 +855,50 @@ export class AzureProvider {
           name: webApp.name,
           url: `https://${webApp.defaultHostName}`,
           runtime: options.runtime,
+        },
+      };
+    } catch (error) {
+      return { success: false, deploymentId, error: error.message };
+    }
+  }
+
+  /**
+   * Deploy Azure Service Bus Namespace
+   */
+  async deployServiceBus(options = {}) {
+    const sbClient = new ServiceBusManagementClient(
+      this.credential,
+      this.subscriptionId,
+    );
+    const deploymentId = uuidv4();
+    const namespaceName =
+      options.namespaceName || `auto-sb-${deploymentId.slice(0, 8)}`;
+
+    try {
+      await this.ensureResourceGroup();
+
+      const namespace = await sbClient.namespaces.beginCreateOrUpdateAndWait(
+        this.resourceGroup,
+        namespaceName,
+        {
+          location: this.location,
+          sku: {
+            name: options.sku || "Basic",
+            tier: options.sku || "Basic",
+          },
+          tags: { DeploymentId: deploymentId, ManagedBy: "cloud-auto-deploy" },
+        },
+      );
+
+      return {
+        success: true,
+        deploymentId,
+        resourceType: "servicebus",
+        resourceId: namespace.id,
+        details: {
+          name: namespace.name,
+          serviceBusEndpoint: namespace.serviceBusEndpoint,
+          sku: namespace.sku.name,
         },
       };
     } catch (error) {
@@ -1021,6 +1087,34 @@ export class AzureProvider {
             default: "mcr.microsoft.com/azuredocs/aci-helloworld",
             placeholder: "Container image",
           },
+          {
+            name: "cpu",
+            type: "number",
+            default: "1",
+            min: "1",
+            max: "4",
+            placeholder: "CPU Cores",
+          },
+          {
+            name: "memory",
+            type: "number",
+            default: "1.5",
+            min: "0.5",
+            max: "16",
+            placeholder: "Memory (GB)",
+          },
+          {
+            name: "dnsLabel",
+            type: "text",
+            default: "",
+            placeholder: "DNS Label (for public access)",
+          },
+          {
+            name: "resourceGroup",
+            type: "text",
+            default: "labs-rg",
+            placeholder: "Resource Group Name",
+          },
         ],
       },
       {
@@ -1037,10 +1131,19 @@ export class AzureProvider {
             default: "NODE|20-lts",
             choices: [
               "NODE|20-lts",
-              "PYTHON|3.12",
-              "DOTNETCORE|8.0",
               "NODE|18-lts",
+              "PYTHON|3.12",
+              "PYTHON|3.11",
+              "DOTNETCORE|8.0",
+              "DOTNETCORE|7.0",
+              "JAVA|17-java17",
             ],
+          },
+          {
+            name: "resourceGroup",
+            type: "text",
+            default: "labs-rg",
+            placeholder: "Resource Group Name",
           },
         ],
       },
@@ -1059,10 +1162,22 @@ export class AzureProvider {
             choices: ["Standard_LRS", "Standard_GRS", "Premium_LRS"],
           },
           {
+            name: "accessTier",
+            type: "select",
+            default: "Hot",
+            choices: ["Hot", "Cool"],
+          },
+          {
             name: "name",
             type: "text",
             default: "",
             placeholder: "Storage name (lowercase)",
+          },
+          {
+            name: "resourceGroup",
+            type: "text",
+            default: "labs-rg",
+            placeholder: "Resource Group Name",
           },
         ],
       },
@@ -1100,6 +1215,26 @@ export class AzureProvider {
             type: "select",
             default: "Basic",
             choices: ["Basic", "S0", "S1"],
+          },
+          {
+            name: "maxSizeGB",
+            type: "number",
+            default: "2",
+            min: "1",
+            max: "1024",
+            placeholder: "Max database size (GB)",
+          },
+          {
+            name: "collation",
+            type: "text",
+            default: "SQL_Latin1_General_CP1_CI_AS",
+            placeholder: "Collation",
+          },
+          {
+            name: "resourceGroup",
+            type: "text",
+            default: "labs-rg",
+            placeholder: "Resource Group Name",
           },
         ],
       },
@@ -1172,6 +1307,33 @@ export class AzureProvider {
             type: "text",
             default: "",
             placeholder: "example.com",
+          },
+        ],
+      },
+      {
+        id: "servicebus",
+        name: "Service Bus",
+        category: "Messaging",
+        description: "Reliable cloud messaging",
+        icon: "📨",
+        options: [
+          {
+            name: "namespaceName",
+            type: "text",
+            default: "",
+            placeholder: "Namespace Name",
+          },
+          {
+            name: "sku",
+            type: "select",
+            default: "Basic",
+            choices: ["Basic", "Standard", "Premium"],
+          },
+          {
+            name: "resourceGroup",
+            type: "text",
+            default: "labs-rg",
+            placeholder: "Resource Group Name",
           },
         ],
       },

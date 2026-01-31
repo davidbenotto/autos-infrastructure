@@ -29,6 +29,8 @@ export class AWSEC2Service {
         "/aws/service/canonical/ubuntu/server/22.04/stable/current/amd64/hvm/ebs-gp3/ami-id",
       "amazon-linux-2023":
         "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64",
+      debian12: "/aws/service/debian/release/12/latest/amd64/ami-id",
+      rhel9: "/aws/service/rhel/9.0/x86_64/latest", // This might need adjustment based on region availability
     };
 
     const paramName = ssmPaths[osImage] || ssmPaths["ubuntu24"];
@@ -49,6 +51,7 @@ export class AWSEC2Service {
         ubuntu24: "ami-04b70fa74e45c3917",
         ubuntu22: "ami-0c02fb55956c7d316",
         "amazon-linux-2023": "ami-051f7e7f6c2f40dc1",
+        debian12: "ami-06451928c13e53505", // Example Debian ID
       };
       return fallbackMap[osImage] || fallbackMap["ubuntu24"];
     }
@@ -58,6 +61,20 @@ export class AWSEC2Service {
    * Deploy an EC2 instance
    */
   async deployEC2(options = {}) {
+    // Handle Region Override
+    let client = this.ec2Client;
+    if (options.region && options.region !== this.config.region) {
+      console.log(`Switching region to ${options.region}`);
+      client = new EC2Client({ ...this.config, region: options.region });
+      // We also need a region-aware SSM client for AMI lookup if we want to be correct,
+      // though getLatestAmi currently uses the default one.
+      // Re-instantiating ssmClient for this request context:
+      this.ssmClient = new SSMClient({
+        ...this.config,
+        region: options.region,
+      });
+    }
+
     const deploymentId = uuidv4();
     const imageId = await this.getLatestAmi(options.osImage);
 
@@ -78,7 +95,7 @@ export class AWSEC2Service {
       // Generate a unique key pair for this deployment
       keyName = `key-${deploymentId}`;
       try {
-        const keyPair = await this.ec2Client.send(
+        const keyPair = await client.send(
           new CreateKeyPairCommand({ KeyName: keyName }),
         );
         keyMaterial = keyPair.KeyMaterial;
@@ -110,9 +127,7 @@ export class AWSEC2Service {
     };
 
     try {
-      const response = await this.ec2Client.send(
-        new RunInstancesCommand(params),
-      );
+      const response = await client.send(new RunInstancesCommand(params));
 
       const result = {
         success: true,

@@ -199,10 +199,12 @@ export class AWSProvider extends BaseProvider {
           DBInstanceIdentifier: dbIdentifier,
           DBInstanceClass: options.instanceClass || "db.t3.micro",
           Engine: options.engine || "mysql",
+          EngineVersion: options.engineVersion || "8.0",
           MasterUsername: options.masterUsername || "admin",
           MasterUserPassword:
             options.masterPassword || `AutoDeploy${this.generateShortId()}!`,
-          AllocatedStorage: options.storage || 20,
+          AllocatedStorage: parseInt(options.storage || 20),
+          MultiAZ: options.multiAZ === "true",
           Tags: this.formatTagsAWS(deploymentId),
         }),
       );
@@ -320,7 +322,13 @@ export class AWSProvider extends BaseProvider {
           TableName: tableName,
           KeySchema: [{ AttributeName: "id", KeyType: "HASH" }],
           AttributeDefinitions: [{ AttributeName: "id", AttributeType: "S" }],
-          BillingMode: "PAY_PER_REQUEST",
+          BillingMode: options.billingMode || "PAY_PER_REQUEST",
+          ...(options.billingMode === "PROVISIONED" && {
+            ProvisionedThroughput: {
+              ReadCapacityUnits: 5,
+              WriteCapacityUnits: 5,
+            },
+          }),
           Tags: this.formatTagsAWS(deploymentId),
         }),
       );
@@ -551,10 +559,30 @@ export class AWSProvider extends BaseProvider {
         cost: { estimate: "~$8-35/month", note: "Varies by instance type" },
         options: [
           {
+            name: "region",
+            type: "select",
+            default: "us-east-1",
+            choices: [
+              "us-east-1",
+              "us-east-2",
+              "us-west-1",
+              "us-west-2",
+              "eu-west-1",
+              "eu-central-1",
+              "ap-southeast-1",
+            ],
+          },
+          {
             name: "osImage",
             type: "select",
             default: "ubuntu24",
-            choices: ["ubuntu24", "ubuntu22", "amazon-linux-2023"],
+            choices: [
+              "ubuntu24",
+              "ubuntu22",
+              "amazon-linux-2023",
+              "debian12",
+              "rhel9",
+            ],
           },
           {
             name: "instanceType",
@@ -607,7 +635,20 @@ export class AWSProvider extends BaseProvider {
             name: "memory",
             type: "select",
             default: "128",
-            choices: ["128", "256", "512", "1024"],
+            choices: ["128", "256", "512", "1024", "2048", "3008"],
+            costMap: {
+              128: "~$0.0000021/sec",
+              1024: "~$0.0000167/sec",
+              2048: "~$0.0000333/sec",
+            },
+          },
+          {
+            name: "timeout",
+            type: "number",
+            default: "3",
+            min: "1",
+            max: "900",
+            placeholder: "Timeout (seconds)",
           },
         ],
       },
@@ -642,6 +683,18 @@ export class AWSProvider extends BaseProvider {
             default: "",
             placeholder: "Bucket name (optional)",
           },
+          {
+            name: "versioning",
+            type: "select",
+            default: "Disabled",
+            choices: ["Enabled", "Disabled"],
+          },
+          {
+            name: "publicAccess",
+            type: "select",
+            default: "Private",
+            choices: ["Private", "Public Read"],
+          },
         ],
       },
       {
@@ -657,6 +710,12 @@ export class AWSProvider extends BaseProvider {
             type: "text",
             default: "",
             placeholder: "Table name",
+          },
+          {
+            name: "billingMode",
+            type: "select",
+            default: "PAY_PER_REQUEST",
+            choices: ["PAY_PER_REQUEST", "PROVISIONED"],
           },
         ],
       },
@@ -676,6 +735,12 @@ export class AWSProvider extends BaseProvider {
             choices: ["mysql", "postgres", "mariadb"],
           },
           {
+            name: "engineVersion",
+            type: "select",
+            default: "8.0",
+            choices: ["8.0", "5.7", "14.6", "15.2"], // Simplified list
+          },
+          {
             name: "instanceClass",
             type: "select",
             default: "db.t3.micro",
@@ -686,6 +751,16 @@ export class AWSProvider extends BaseProvider {
             type: "select",
             default: "20",
             choices: ["20", "50", "100"],
+          },
+          {
+            name: "multiAZ",
+            type: "select",
+            default: "false",
+            choices: ["true", "false"],
+            costMap: {
+              true: "x2 price",
+              false: "Standard",
+            },
           },
         ],
       },
